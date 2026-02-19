@@ -1,0 +1,32 @@
+{
+    "blockName": "core\/latest-posts",
+    "attrs": {
+        "postsToShow": 10,
+        "displayPostContent": true,
+        "excerptLength": 62,
+        "displayFeaturedImage": true,
+        "style": {
+            "elements": {
+                "link": {
+                    "color": {
+                        "text": "var:preset|color|contrast"
+                    }
+                }
+            },
+            "spacing": {
+                "padding": {
+                    "top": "var:preset|spacing|30",
+                    "bottom": "var:preset|spacing|30",
+                    "left": "var:preset|spacing|30",
+                    "right": "var:preset|spacing|30"
+                }
+            }
+        },
+        "backgroundColor": "accent-1",
+        "textColor": "accent-3",
+        "className": "wp-elements-51a5a8e28b33294561e7836b1e8dd0ae"
+    },
+    "innerBlocks": [],
+    "innerHTML": "",
+    "innerContent": []
+}

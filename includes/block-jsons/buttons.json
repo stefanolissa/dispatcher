@@ -1,0 +1,62 @@
+{
+    "blockName": "core\/buttons",
+    "attrs": {
+        "style": {
+            "spacing": {
+                "margin": {
+                    "top": "20px",
+                    "bottom": "20px"
+                },
+                "padding": {
+                    "top": "20px",
+                    "right": "20px",
+                    "bottom": "20px",
+                    "left": "20px"
+                },
+                "blockGap": {
+                    "top": "22px",
+                    "left": "22px"
+                }
+            },
+            "border": {
+                "width": "1px",
+                "color": "#F6CFF4",
+                "radius": {
+                    "topLeft": "33px",
+                    "topRight": "33px",
+                    "bottomLeft": "33px",
+                    "bottomRight": "33px"
+                }
+            }
+        },
+        "fontSize": "medium"
+    },
+    "innerBlocks": [
+        {
+            "blockName": "core\/button",
+            "attrs": [],
+            "innerBlocks": [],
+            "innerHTML": "\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link wp-element-button\"><\/a><\/div>\n",
+            "innerContent": [
+                "\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link wp-element-button\"><\/a><\/div>\n"
+            ]
+        },
+        {
+            "blockName": "core\/button",
+            "attrs": [],
+            "innerBlocks": [],
+            "innerHTML": "\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link wp-element-button\"><\/a><\/div>\n",
+            "innerContent": [
+                "\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link wp-element-button\"><\/a><\/div>\n"
+            ]
+        }
+    ],
+    "innerHTML": "\n<div class=\"wp-block-buttons has-custom-font-size has-border-color has-medium-font-size\" style=\"border-color:#F6CFF4;border-width:1px;border-top-left-radius:33px;border-top-right-radius:33px;border-bottom-left-radius:33px;border-bottom-right-radius:33px;margin-top:20px;margin-bottom:20px;padding-top:20px;padding-right:20px;padding-bottom:20px;padding-left:20px\">\n\n<\/div>\n",
+    "innerContent": [
+        "\n<div class=\"wp-block-buttons has-custom-font-size has-border-color has-medium-font-size\" style=\"border-color:#F6CFF4;border-width:1px;border-top-left-radius:33px;border-top-right-radius:33px;border-bottom-left-radius:33px;border-bottom-right-radius:33px;margin-top:20px;margin-bottom:20px;padding-top:20px;padding-right:20px;padding-bottom:20px;padding-left:20px\">",
+        null,
+        "\n\n",
+        null,
+        "<\/div>\n"
+    ]
+}

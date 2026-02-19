@@ -1,0 +1,67 @@
+{
+    "blockName": "core\/group",
+    "attrs": {
+        "className": "is-style-default",
+        "style": {
+            "position": {
+                "type": "sticky",
+                "top": "0px"
+            },
+            "background": {
+                "backgroundImage": {
+                    "url": "http:\/\/www.wordpress.lan\/ai\/wp-content\/uploads\/2025\/11\/pexels-nicollazzi-xiong-208366-668353.jpg",
+                    "id": 52,
+                    "source": "file",
+                    "title": "pexels-nicollazzi-xiong-208366-668353"
+                },
+                "backgroundSize": "cover"
+            },
+            "spacing": {
+                "blockGap": "13px"
+            },
+            "border": {
+                "width": "3px",
+                "color": "#503AA8",
+                "radius": {
+                    "topLeft": "12px",
+                    "topRight": "12px",
+                    "bottomLeft": "12px",
+                    "bottomRight": "12px"
+                }
+            }
+        },
+        "layout": {
+            "type": "constrained"
+        }
+    },
+    "innerBlocks": [
+        {
+            "blockName": "core\/paragraph",
+            "attrs": [],
+            "innerBlocks": [],
+            "innerHTML": "\n<p>aaaaaaaa<\/p>\n",
+            "innerContent": [
+                "\n<p>aaaaaaaa<\/p>\n"
+            ]
+        },
+        {
+            "blockName": "core\/paragraph",
+            "attrs": {
+                "className": "is-style-default"
+            },
+            "innerBlocks": [],
+            "innerHTML": "\n<p class=\"is-style-default\">bbbbbbbbb<\/p>\n",
+            "innerContent": [
+                "\n<p class=\"is-style-default\">bbbbbbbbb<\/p>\n"
+            ]
+        }
+    ],
+    "innerHTML": "\n<div class=\"wp-block-group is-style-default has-border-color\" style=\"border-color:#503AA8;border-width:3px;border-top-left-radius:12px;border-top-right-radius:12px;border-bottom-left-radius:12px;border-bottom-right-radius:12px\">\n\n<\/div>\n",
+    "innerContent": [
+        "\n<div class=\"wp-block-group is-style-default has-border-color\" style=\"border-color:#503AA8;border-width:3px;border-top-left-radius:12px;border-top-right-radius:12px;border-bottom-left-radius:12px;border-bottom-right-radius:12px\">",
+        null,
+        "\n\n",
+        null,
+        "<\/div>\n"
+    ]
+}

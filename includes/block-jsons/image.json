@@ -1,0 +1,33 @@
+{
+    "blockName": "core\/image",
+    "attrs": {
+        "id": 52,
+        "sizeSlug": "large",
+        "linkDestination": "none",
+        "style": {
+            "spacing": {
+                "margin": {
+                    "top": "34px",
+                    "right": "34px",
+                    "bottom": "34px",
+                    "left": "34px"
+                }
+            },
+            "border": {
+                "width": "6px",
+                "color": "#F6CFF4",
+                "radius": {
+                    "topLeft": "8px",
+                    "topRight": "8px",
+                    "bottomLeft": "8px",
+                    "bottomRight": "8px"
+                }
+            }
+        }
+    },
+    "innerBlocks": [],
+    "innerHTML": "\n<figure class=\"wp-block-image size-large has-custom-border\" style=\"margin-top:34px;margin-right:34px;margin-bottom:34px;margin-left:34px\"><img src=\"http:\/\/www.wordpress.lan\/ai\/wp-content\/uploads\/2025\/11\/pexels-nicollazzi-xiong-208366-668353-1024x682.jpg\" alt=\"Alternative text\" class=\"has-border-color wp-image-52\" style=\"border-color:#F6CFF4;border-width:6px;border-top-left-radius:8px;border-top-right-radius:8px;border-bottom-left-radius:8px;border-bottom-right-radius:8px\"\/><\/figure>\n",
+    "innerContent": [
+        "\n<figure class=\"wp-block-image size-large has-custom-border\" style=\"margin-top:34px;margin-right:34px;margin-bottom:34px;margin-left:34px\"><img src=\"http:\/\/www.wordpress.lan\/ai\/wp-content\/uploads\/2025\/11\/pexels-nicollazzi-xiong-208366-668353-1024x682.jpg\" alt=\"Alternative text\" class=\"has-border-color wp-image-52\" style=\"border-color:#F6CFF4;border-width:6px;border-top-left-radius:8px;border-top-right-radius:8px;border-bottom-left-radius:8px;border-bottom-right-radius:8px\"\/><\/figure>\n"
+    ]
+}

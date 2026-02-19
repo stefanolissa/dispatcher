@@ -1,0 +1,31 @@
+body {
+    background-color: #eeeeee;
+    font-family: sans-serif;
+}
+
+.container {
+    /*border: 1px solid #ddd;*/
+    background-color: #ffffff;
+}
+
+.container>tbody>tr>td {
+    padding: 16px;
+}
+
+/*.header {
+    background-color: #e4e4e4;
+    padding: 1rem 0;
+    margin: 0 auto;
+}
+.header td {
+    padding: .2rem 1rem;
+    font-size: 1rem;
+}
+
+.header .subject {
+    font-weight: bold;
+}
+
+.header input, .header button {
+    font-size: 1rem;
+}*/

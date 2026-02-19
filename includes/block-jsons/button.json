@@ -1,0 +1,28 @@
+{
+    "blockName": "core\/button",
+    "attrs": {
+        "textAlign": "center",
+        "backgroundColor": "accent-3",
+        "textColor": "accent-1",
+        "width": 50,
+        "style": {
+            "elements": {
+                "link": {
+                    "color": {
+                        "text": "var:preset|color|accent-1"
+                    }
+                }
+            }
+        },
+        "fontSize": "x-large"
+    },
+    "innerBlocks": [],
+    "innerHTML": "\n<div class=\"wp-block-button has-custom-width wp-block-button__width-50\"><a class=\"wp-block-button__link has-accent-1-color has-accent-3-background-color has-text-color has-background has-link-color has-x-large-font-size has-text-align-center has-custom-font-size wp-element-button\" href=\"http:\/\/dfsfsfsdfsfds\">ffffffff<\/a><\/div>\n",
+    "innerContent": [
+        "\n<div class=\"wp-block-button has-custom-width wp-block-button__width-50\"><a class=\"wp-block-button__link has-accent-1-color has-accent-3-background-color has-text-color has-background has-link-color has-x-large-font-size has-text-align-center has-custom-font-size wp-element-button\" href=\"http:\/\/dfsfsfsdfsfds\">ffffffff<\/a><\/div>\n"
+    ],
+    "parentLayout": {
+        "type": "flex",
+        "justifyContent": "center"
+    }
+}
