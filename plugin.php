@@ -96,6 +96,21 @@ class Dispatcher {
         }
     }
 
+    static function get_audiences() {
+        $default = new stdClass();
+        $default->id = 0;
+        $default->name = 'Default';
+
+        $audiences = apply_filters ('dispacther_audiences', []);
+        array_unshift($audiences, $default);
+
+        $default = new stdClass();
+        $default->id = 3;
+        $default->name = 'Default 2';
+        array_unshift($audiences, $default);
+        return $audiences;
+    }
+
     /**
      *
      * @global wpdb $wpdb
@@ -154,6 +169,16 @@ class Dispatcher {
         $user_id = (int) get_post_meta($email->ID, 'dispatcher_user_id', true);
         /** @var WP_User[] $users */
         $users = $wpdb->get_results($wpdb->prepare("select * from {$wpdb->users} where id > %d limit $max", $user_id));
+
+        /*
+          $audience_id = intval(get_post_meta($email->ID, 'dispatcher_audience_id', true));
+          $audience = self::get_audience($audience_id);
+          $last_contact_id = intval(get_post_meta($email->ID, 'dispatcher_last_contact_id', true));
+
+          $contacts = apply_filter('dispatcher_contacts', [], $audience, $last_contact_id, $max);
+          $contact->email;
+          $contact->id;
+         */
 
         $headers = ['Content-Type: text/html'];
         if (self::$settings['from_email'] ?? '') {
