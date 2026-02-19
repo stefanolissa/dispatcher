@@ -62,7 +62,7 @@ class Dispatcher {
         add_filter('cron_schedules', function ($schedules) {
             $schedules['dispatcher'] = [
                 'interval' => 900,
-                'display' => 'Dispacther (15 minutes)'
+                'display' => 'Dispatcher (15 minutes)'
             ];
             return $schedules;
         });

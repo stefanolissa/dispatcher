@@ -1,4 +1,4 @@
-# Dispacther
+# Dispatcher
 
 A mailing plugin for WordPress to send emails to site users.
 
