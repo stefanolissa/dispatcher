@@ -17,7 +17,7 @@ defined('ABSPATH') || exit;
   Update URI: satollo-dispatcher
  */
 
-define('DISPATCHER_VERSION', '0.0.6');
+define('DISPATCHER_VERSION', '0.0.1');
 
 class Dispatcher {
 
@@ -79,7 +79,7 @@ class Dispatcher {
             }
         }
 
-//        add_action('dispatcher_run', [self::class, 'run']);
+        add_action('dispatcher_run', [self::class, 'run']);
 //
         if (isset(self::$settings['gutenberg_debug'])) {
             add_action('template_redirect', function () {
@@ -94,19 +94,68 @@ class Dispatcher {
                 }
             }, 1);
         }
+
+        add_action('dispatcher_audience_update_total', function ($audience) {
+            global $wpdb;
+            $audience->total = $wpdb->get_var("select count(*) from {$wpdb->users}");
+
+        });
+        add_filter('dispatcher_contacts_dsp-all', function ($contacts, $audience) {
+
+        }, 10, 2);
+
+        add_filter('dispatcher_contacts', function ($contacts, $audience) {
+            global $wpdb;
+            if ($audience->id === 'dsp-all') {
+                //$users = $wpdb->get_results($wpdb->prepare("select ID, user_email from {$wpdb->users} where id > %d limit %d", $audience->last_contact_id, $audience->max));
+                $users = $wpdb->get_results($wpdb->prepare("select ID, user_email from {$wpdb->users} where id > %d limit %d", 0, $audience->max));
+                foreach ($users as $user) {
+                    $contact = new stdClass();
+                    $contact->id = $user->ID;
+                    $contact->email = $user->user_email;
+                    $contacts[] = $contact;
+                }
+                return $contacts;
+            }
+
+            if ($audience->id === 'dsp-roles') {
+
+                $roles = $audience->data['roles'] ?? [];
+                while (count($contacts) < $audience->max) {
+                    $db_users = $wpdb->get_results($wpdb->prepare("select ID from {$wpdb->users} where id > %d limit %d", $audience->last_contact_id, $audience->max));
+                    if (empty($db_users)) {
+                        return $contacts;
+                    }
+                    foreach ($db_users as $db_user) {
+
+                        $user = new WP_User($db_user->ID);
+                        if (empty(array_intersect($user->roles, $roles))) {
+                            continue;
+                        }
+                        $contact = new stdClass();
+                        $contact->id = $user->ID;
+                        $contact->email = $user->user_email;
+                        $contacts[] = $contact;
+                    }
+                }
+                return $contacts;
+            }
+
+            return $contacts;
+        }, 10, 2);
     }
 
     static function get_audiences() {
         $default = new stdClass();
-        $default->id = 0;
-        $default->name = 'Default';
+        $default->id = 'dsp-all';
+        $default->name = 'All WP Users';
 
-        $audiences = apply_filters ('dispacther_audiences', []);
+        $audiences = apply_filters('dispatcher_audiences', []);
         array_unshift($audiences, $default);
 
         $default = new stdClass();
-        $default->id = 3;
-        $default->name = 'Default 2';
+        $default->id = 'dsp-roles';
+        $default->name = 'WP Users by role';
         array_unshift($audiences, $default);
         return $audiences;
     }
@@ -149,36 +198,38 @@ class Dispatcher {
         //foreach ($emails as $email) {
         self::log(__METHOD__, 'Processing ' . $email->post_title);
 
-        $audience = get_post_meta($email->ID, 'dispatcher_audience', true);
-        $roles = $audience['roles'] ?? [];
-        self::log(__METHOD__, 'Targeted roles: ', $roles);
-
-        if (!$roles) {
-            update_post_meta($email->ID, 'dispatcher_status', 'sent');
-            self::log(__METHOD__, 'No roles');
-            self::log(__METHOD__, 'Completed');
-            self::log(__METHOD__, 'End');
-            return;
-        }
-
         $count = intval(get_post_meta($email->ID, 'dispatcher_count', true));
 
         // Get the content to build the message
         // ...
 
-        $user_id = (int) get_post_meta($email->ID, 'dispatcher_user_id', true);
-        /** @var WP_User[] $users */
-        $users = $wpdb->get_results($wpdb->prepare("select * from {$wpdb->users} where id > %d limit $max", $user_id));
+        $audience_id = sanitize_key(get_post_meta($email->ID, 'audience_id', true));
 
-        /*
-          $audience_id = intval(get_post_meta($email->ID, 'dispatcher_audience_id', true));
-          $audience = self::get_audience($audience_id);
-          $last_contact_id = intval(get_post_meta($email->ID, 'dispatcher_last_contact_id', true));
+        $last_contact_id = sanitize_key(get_post_meta($email->ID, 'last_contact_id', true));
 
-          $contacts = apply_filter('dispatcher_contacts', [], $audience, $last_contact_id, $max);
-          $contact->email;
-          $contact->id;
-         */
+        $audience_data = get_post_meta($email->ID, 'audience_data', true);
+        if (!is_array($audience_data)) {
+            $audience_data = [];
+        }
+
+
+        $audience = new stdClass();
+        $audience->id = $audience_id;
+        $audience->data = $audience_data;
+        $audience->last_contact_id = $last_contact_id;
+        $audience->max = $max;
+
+        self::log(__METHOD__, 'Audience', $audience);
+
+        $contacts = apply_filters('dispatcher_contacts', [], $audience);
+        if (!$contacts) {
+            update_post_meta($email->ID, 'dispatcher_status', 'sent');
+            self::log(__METHOD__, 'Completed');
+            self::log(__METHOD__, 'End');
+            return;
+        }
+
+        self::log(__METHOD__, 'Contacts', $contacts);
 
         $headers = ['Content-Type: text/html'];
         if (self::$settings['from_email'] ?? '') {
@@ -187,24 +238,16 @@ class Dispatcher {
 
         $message = self::render_message($email);
 
-        foreach ($users as $db_user) {
-            update_post_meta($email->ID, 'dispatcher_user_id', $db_user->ID);
+        foreach ($contacts as $contact) {
+            update_post_meta($email->ID, 'dispatcher_last_contact_id', $contact->id);
 
-            $user = new WP_User($db_user->ID);
-
-            self::log(__METHOD__, 'Checking audience against ' . $user->user_email);
-            if (empty(array_intersect($user->roles, $roles))) {
-                self::log(__METHOD__, 'Not targeted');
-                continue;
-            }
-
-            self::log(__METHOD__, 'Sending to ' . $user->user_email);
+            self::log(__METHOD__, 'Sending to ' . $contact->email);
 
             if (self::$settings['redirect_email'] ?? '') {
                 self::log(__METHOD__, 'Redirecting to ' . self::$settings['redirect_email']);
                 $to = self::$settings['redirect_email'];
             } else {
-                $to = $user->user_email;
+                $to = $contact->email;
             }
 
 
@@ -214,7 +257,7 @@ class Dispatcher {
             update_post_meta($email->ID, 'dispatcher_count', $count);
 
             if ($result) {
-                self::log(__METHOD__, 'Sent to: ' . $user->user_email);
+                self::log(__METHOD__, 'Sent to: ' . $contact->email);
             } else {
                 self::log(__METHOD__, 'Sending error');
             }
@@ -224,13 +267,6 @@ class Dispatcher {
             }
         }
 
-        $user_id = (int) get_post_meta($email->ID, 'dispatcher_user_id', true);
-        $count = $wpdb->get_var($wpdb->prepare("select count(*) from {$wpdb->users} where id > %d", $user_id));
-        if (!$count) {
-            update_post_meta($email->ID, 'dispatcher_status', 'sent');
-            self::log(__METHOD__, 'Completed');
-        }
-        //}
 
         self::log(__METHOD__, 'End');
     }
@@ -323,224 +359,6 @@ class Dispatcher {
         return 'The email is now sending, the process will start shortly, you can check the progress opening the message details page.';
     }
 
-    static function pause_email(array $input) {
-        self::log(__METHOD__, $input);
-
-        $email = get_post($input['email_id']);
-
-        if (!$email || $email->post_type !== self::POST_TYPE) {
-            return 'Problem: the email was not found the ID is not correct.';
-        }
-
-        $status = get_post_meta($email->ID, 'dispatcher_status', true);
-
-        if ($status !== 'sending') {
-            return 'Problem: this email is not sending, there nothing to do';
-        }
-
-        update_post_meta($email->ID, 'dispatcher_status', 'paused');
-
-        return 'The email is now paused.';
-    }
-
-    static function set_email_status(array $input) {
-        self::log(__METHOD__, $input);
-
-        $email = get_post($input['email_id']);
-
-        if (!$email) {
-            return 'Error: the provided identifier is not an email.';
-        }
-
-        if ($email->post_type !== self::POST_TYPE) {
-// TODO: Add a list of the available email with their IDs
-            return 'Error: the provided identifier is not an email but another kind of post type.';
-        }
-
-        $status = $input['status'];
-        update_post_meta($email->ID, 'dispatcher_status', $status);
-
-        return 'The status has been changed.';
-    }
-
-    /**
-     * Changes an email field value.
-     *
-     * Supported fields are: subject and status
-     *
-     * @param array $input
-     * @return string
-     */
-    static function set_email_field(array $input) {
-        self::log(__METHOD__, $input);
-
-        $email = get_post($input['email_id']);
-
-        if (!$email) {
-            return 'Error: the provided identifier is not an email.';
-        }
-
-        if ($email->post_type !== self::POST_TYPE) {
-// TODO: Add a list of the available email with their IDs
-            return 'Error: the provided identifier is not an email but another kind of post type.';
-        }
-
-        $field = $input['field'];
-
-        if ($field === 'subject') {
-            wp_update_post(['ID' => $email->ID, 'post_title' => $input['value']]);
-            return 'Updated.';
-        }
-
-        if ($field === 'status') {
-            update_post_meta($email->ID, 'dispatcher_status', $input['value']);
-            return 'Updated.';
-        }
-
-        return 'Error: a wrong field was provided.';
-    }
-
-    static function set_email_field_2(array $input) {
-        self::log(__METHOD__, $input);
-
-        $email = get_post($input['email_id']);
-
-        if (!$email) {
-            return 'Error: the provided identifier is not an email.';
-        }
-
-        if ($email->post_type !== self::POST_TYPE) {
-// TODO: Add a list of the available email with their IDs
-            return 'Error: the provided identifier is not an email but another kind of post type.';
-        }
-
-        $field = $input['field'];
-
-        if ($field === 'subject') {
-            wp_update_post(['ID' => $email->ID, 'post_title' => $input['subject_value']]);
-            return 'Updated.';
-        }
-
-        if ($field === 'status') {
-            update_post_meta($email->ID, 'dispatcher_status', $input['status_value']);
-            return 'Updated.';
-        }
-
-        if ($field === 'from_email') {
-            update_post_meta($email->ID, 'dispatcher_from_email', $input['from_email_value']);
-            return 'Updated.';
-        }
-
-        return 'Error: a wrong field was provided.';
-    }
-
-    /**
-     * Return statistics of a specific email.
-     *
-     * @param array $input
-     * @return array
-     */
-    static function get_email_statistics($input) {
-        self::log(__METHOD__, $input);
-        return [
-            'subscribers' => 10,
-            'opens' => 0,
-            'clicks' => 0];
-    }
-
-    /**
-     * Returns the last 5 emails.
-     *
-     * Returned fields are id, subject, status.
-     *
-     * @param array $input
-     * @return string
-     */
-    static function get_emails($input) {
-        global $wpdb;
-
-        self::log(__METHOD__, $input);
-        $max = (int) ($input['max'] ?? 5);
-        $emails = get_posts(['post_type' => self::POST_TYPE, 'post_status' => 'any', 'posts_per_page' => $max]);
-        $list = [];
-
-        $total = (int) $wpdb->get_var("select count(*) from {$wpdb->users}");
-
-        foreach ($emails as $email) {
-            $status = get_post_meta($email->ID, 'dispatcher_status', true);
-            if (empty($status)) {
-                $status = 'draft';
-            }
-            $progress = 0;
-            if ($status === 'sending') {
-                $last_id = (int) get_post_meta($post->ID, 'dispatcher_user_id', true);
-                $sent = (int) $wpdb->get_var($wpdb->prepare("select count(*) from {$wpdb->users} where id <= %d", $last_id));
-                $percent = floor($sent * 100.0 / $total);
-            } elseif ($status === 'sent') {
-                $progress = 100;
-            }
-            $list[] = ['id' => $email->ID, 'subject' => $email->post_title, 'status' => $status, 'progress_percent' => $progress];
-        }
-        self::log(__METHOD__, $list);
-        return $list;
-    }
-
-    static function update_setting($input) {
-        self::log(__METHOD__, $input);
-
-        $settings = get_option(self::SLUG, []);
-        // Specifing the default value is not enough: object caching plugins mess up with the missing options...
-        if (!is_array($settings)) {
-            $settings = [];
-        }
-
-        if (!is_null($input['speed'])) {
-            $settings['speed'] = (int) $input['speed'];
-        }
-        if (!is_null($input['delay'])) {
-            $settings['delay'] = (int) $input['delay'];
-        }
-        if (!is_null($input['abilities'])) {
-            if ('on' === $input['abilities']) {
-                $settings['abilities'] = 'on';
-            } else {
-                unset($settings['abilities']);
-            }
-        }
-        update_option(self::SLUG, $settings);
-        return 'ok';
-
-        $name = $input['setting_name'];
-        $value = $input['setting_value'];
-
-        // TODO: validation
-
-
-        $settings[$name] = $value;
-        update_option(self::SLUG, $settings);
-        return 'ok';
-    }
-
-    static function get_setting($input) {
-        self::log(__METHOD__, $input);
-        $settings = get_option(self::SLUG, []);
-        if (!is_array($settings)) {
-            $settings = [];
-        }
-        return $settings[$input['setting_name']] ?? 'Invalid setting or not set yet';
-    }
-
-    static function get_settings($input) {
-        self::log(__METHOD__, $input);
-        $settings = get_option(self::SLUG, []);
-        if (!is_array($settings)) {
-            $settings = [];
-        }
-        //self::log(__METHOD__, $settings);
-        $settings['abilities'] = $settings['abilities'] ?? 'off';
-        return wp_json_encode($settings);
-    }
-
     /**
      * Writes a log line concatenating the provided elements (they could be objects, arrays, ...)
      *
@@ -562,11 +380,6 @@ class Dispatcher {
             $row .= ' ';
         }
         error_log('Dispatcher > ' . $row);
-    }
-
-    static function register_ability($name, $attrs) {
-        $r = wp_register_ability($name, $attrs);
-        self::log(__METHOD__, $name, $r);
     }
 }
 

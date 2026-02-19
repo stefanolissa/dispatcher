@@ -18,6 +18,41 @@ class DispatcherAdmin {
                 wp_enqueue_style('dispatcher', plugin_dir_url(__FILE__) . 'admin.css', [], DISPATCHER_VERSION);
             });
         }
+
+        add_action('wp_ajax_dispatcher_audience_settings', [self::class, 'dispatcher_audience_settings']);
+
+        add_action('dispatcher_audience_settings_dsp-roles', function ($audience) {
+            $roles = $audience->data['roles'] ?? [];
+            foreach (wp_roles()->roles as $key => $wp_role) {
+                echo '<label><input type="checkbox" name="audience_data[roles][]" value="', esc_attr($key), '" ',
+                in_array($key, $roles) ? 'checked' : '',
+                '> ', esc_html($wp_role['name']), '</label><br>';
+            }
+        });
+    }
+
+    static function dispatcher_audience_settings() {
+        check_ajax_referer('save', 'audience_nonce');
+
+        if (!current_user_can('administrator')) {
+            wp_send_json_error('You do not have permission to do this.', 403);
+        }
+
+        $post_id = sanitize_key($_POST['post_id']);
+        $audience_data = get_post_meta($post_id, 'audience_data', true);
+        if (!is_array($audience_data)) {
+            $audience_data = [];
+        }
+
+        $audience_id = sanitize_key($_POST['audience_id']);
+
+        $audience = new stdClass();
+        $audience->id = $audience_id;
+        $audience->data = $audience_data;
+
+        //do_action('dispatcher_audience_settings', $audience);
+        do_action('dispatcher_audience_settings_' . $audience_id, $audience);
+        wp_die();
     }
 }
 
@@ -97,15 +132,38 @@ add_action('current_screen', function () {
     }
 });
 
+function dispatcher_build_audience($email) {
+    $audience_id = sanitize_key(get_post_meta($email->ID, 'audience_id', true));
+
+    $last_contact_id = sanitize_key(get_post_meta($email->ID, 'last_contact_id', true));
+
+    $audience_data = get_post_meta($email->ID, 'audience_data', true);
+    if (!is_array($audience_data)) {
+        $audience_data = [];
+    }
+    $total = (int) get_post_meta($email->ID, 'audience_total', true);
+
+    $audience = new stdClass();
+    $audience->id = $audience_id;
+    $audience->data = $audience_data;
+    $audience->last_contact_id = $last_contact_id;
+    $audience->total = $total;
+    return $audience;
+}
+
 /**
  *
  * @param WP_Post $email
  * @param string $action
  */
 function dispatcher_process_action($email, $action) {
+    Dispatcher::log('Processing action', $action);
     if ($action === 'send') {
         update_post_meta($email->ID, 'dispatcher_send_time', time());
-        update_post_meta($email->ID, 'dispatcher_user_id', 0);
+        update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
+        $audience = dispatcher_build_audience($email);
+        do_action('dispatcher_audience_update_total', $audience);
+        update_post_meta($email->ID, 'audience_total', (int) $audience->total);
         update_post_meta($email->ID, 'dispatcher_status', 'sending');
         Dispatcher::run();
     } elseif ($action === 'pause') {
@@ -114,11 +172,14 @@ function dispatcher_process_action($email, $action) {
         update_post_meta($email->ID, 'dispatcher_status', 'sending');
     } elseif ($action === 'resend') {
         update_post_meta($email->ID, 'dispatcher_send_time', time());
-        update_post_meta($email->ID, 'dispatcher_user_id', 0);
+        update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
+        $audience = dispatcher_build_audience($email);
+        do_action('dispatcher_audience_update_total', $audience);
+        update_post_meta($email->ID, 'audience_total', (int) $audience->total);
         update_post_meta($email->ID, 'dispatcher_status', 'sending');
         Dispatcher::run();
     } elseif ($action === 'stop') {
-        update_post_meta($email->ID, 'dispatcher_user_id', 0);
+        update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
         update_post_meta($email->ID, 'dispatcher_status', 'draft');
     } elseif ($action === 'test') {
 
@@ -133,15 +194,12 @@ function dispatcher_process_action($email, $action) {
 }
 
 add_action('wp_ajax_dispatcher_gutenberg', function () {
-    // A. Security Check (Always check nonces!)
     check_ajax_referer('save', '_dispatchernonce');
 
-    // B. Permission Check
     if (!current_user_can('administrator')) {
         wp_send_json_error('You do not have permission to do this.', 403);
     }
 
-    // C. Process Data
     $action = $_POST['act'] ?? '';
     $post_id = intval($_POST['post_id']);
 
@@ -159,34 +217,6 @@ add_action('wp_ajax_dispatcher_gutenberg', function () {
     }
 
     dispatcher_echo_status_meta_box_content($post);
-    wp_die();
-});
-
-add_action('wp_ajax_dispatcher_audience', function () {
-    check_ajax_referer('save', '_dispatchernonce');
-
-    if (!current_user_can('administrator')) {
-        wp_send_json_error('You do not have permission to do this.', 403);
-    }
-
-    $post_id = sanitize_key($_POST['post_id']);
-    $audience_data = get_post_meta($post_id, 'audience_data', true);
-    if (!is_array($audience_data)) {
-        $audience_data = [];
-    }
-
-    $audience_id = sanitize_key($_POST['audience_id']);
-
-    if (!$audience_id) {
-        $roles = $audience_data['roles'] ?? [];
-        foreach (wp_roles()->roles as $key => $wp_role) {
-            echo '<label><input type="checkbox" name="audience_data[roles][]" value="', esc_attr($key), '" ',
-            in_array($key, $roles) ? 'checked' : '',
-            '> ', esc_html($wp_role['name']), '</label><br>';
-        }
-    } else {
-        do_action('dispatcher_audience_fields', $audience_id);
-    }
     wp_die();
 });
 
@@ -429,10 +459,10 @@ function dispatcher_echo_audience_meta_box_content($post) {
         jQuery(function () {
             jQuery('select#audience').on('change', function () {
                 const data = {
-                    action: 'dispatcher_audience',
-                    _dispatchernonce: '<?= wp_create_nonce('save') ?>',
+                    action: 'dispatcher_audience_settings',
+                    audience_nonce: jQuery('#audience_nonce').val(),
                     audience_id: this.value,
-                    post_id: '<?= $post->ID ?>'
+                    post_id: jQuery('#audience_post_id').val(),
                 };
                 jQuery.post('<?= admin_url('admin-ajax.php') ?>', data, function (response) {
                     jQuery('#audience-settings').html(response);
@@ -441,34 +471,21 @@ function dispatcher_echo_audience_meta_box_content($post) {
                 }).always(function () {
                 });
             });
+            jQuery('select#audience').trigger('change');
         });
     </script>
     <?php
-    $audience = get_post_meta($post->ID, 'dispatcher_audience', true);
-
-    if (!is_array($audience)) {
-        $audience = [];
-    }
-    $roles = $audience['roles'] ?? [];
-
-    wp_nonce_field('save', '_audience_nonce');
-    foreach (wp_roles()->roles as $key => $wp_role) {
-        echo '<label><input type="checkbox" name="dispatcher_audience_roles[]" value="', esc_attr($key), '" ',
-        in_array($key, $roles) ? 'checked' : '',
-        '> ', esc_html($wp_role['name']), '</label><br>';
-    }
-
     $audiences = Dispatcher::get_audiences();
-    $audience_id = get_post_meta($post->ID, 'dispatcher_audience_id', true);
+    $audience_id = sanitize_key(get_post_meta($post->ID, 'audience_id', true));
+    wp_nonce_field('save', 'audience_nonce');
+    echo '<input type="hidden" name="audience_post_id" id="audience_post_id" value="' . $post->ID . '">';
     echo '<select name="audience_id" id="audience">';
     foreach ($audiences as $audience) {
-        echo '<option value="', esc_attr($audience->id), '" ', ($audience_id == $audience->id ? 'selected' : ''), '>', esc_html($audience->name), '</option>';
+        echo '<option value="', esc_attr(sanitize_key($audience->id)), '" ', ($audience_id == $audience->id ? 'selected' : ''), '>', esc_html($audience->name), '</option>';
     }
     echo '</select>';
 
-    echo '<div id="audience-settings"></div>';
-
-    echo '<p style="font-size: .9em">You can add roles using a plugin, like wp roles.</p>';
+    echo '<div id="audience-settings" style="margin-top: 1rem"></div>';
 }
 
 // Save action from the classic editor
@@ -478,50 +495,26 @@ add_action('save_post_dsp_email', function ($post_id, $post, $update) {
         return;
     }
 
-    if (wp_verify_nonce($_POST['_audience_nonce'] ?? '', 'save')) {
+    if (wp_verify_nonce($_POST['audience_nonce'] ?? '', 'save')) {
 
         $audience_data = wp_unslash($_POST['audience_data'] ?? []);
+        $audience_id = sanitize_key($_POST['audience_id'] ?? '');
 
-        $audience = ['roles' => $_POST['dispatcher_audience_roles'] ?? []];
-        update_post_meta($post_id, 'dispatcher_audience', $audience);
-        update_post_meta($post_id, 'audience_data', $audience_data);
+        $audience = new stdClass();
+        $audience->id = $audience_id;
+        $audience->data = $audience_data;
+        $audience->total = 0;
+
+        do_action('dispatcher_audience_save', $audience);
+
+        update_post_meta($post_id, 'audience_id', $audience_id);
+        update_post_meta($post_id, 'audience_data', $audience->data);
+        update_post_meta($post_id, 'audience_total', (int) $audience->total);
     }
 
-    $action = $_POST['dispatcher_action'] ?? '';
+    $action = sanitize_key($_POST['dispatcher_action'] ?? '');
 
-    if ($action === 'send') {
-        update_post_meta($post_id, 'dispatcher_send_time', time());
-        update_post_meta($post_id, 'dispatcher_user_id', 0);
-        update_post_meta($post_id, 'dispatcher_status', 'sending');
-        Dispatcher::run();
-    } elseif ($action === 'pause') {
-        update_post_meta($post_id, 'dispatcher_status', 'paused');
-    } elseif ($action === 'continue') {
-        update_post_meta($post_id, 'dispatcher_status', 'sending');
-    } elseif ($action === 'resend') {
-        update_post_meta($post_id, 'dispatcher_send_time', time());
-        update_post_meta($post_id, 'dispatcher_user_id', 0);
-        update_post_meta($post_id, 'dispatcher_status', 'sending');
-        Dispatcher::run();
-    } elseif ($action === 'stop') {
-        update_post_meta($post_id, 'dispatcher_user_id', 0);
-        update_post_meta($post_id, 'dispatcher_status', 'draft');
-    } elseif ($action === 'test') {
-
-        $headers = ['Content-Type: text/html'];
-        if (Dispatcher::$settings['from_email'] ?? '') {
-            $headers[] = 'From: ' . Dispatcher::$settings['from_email'];
-        }
-        $message = Dispatcher::prepare_message($post);
-        $to = wp_get_current_user()->user_email;
-        wp_mail($to, $post->post_title . ' [PREVIEW]', $message, $headers);
-
-        add_filter('redirect_post_location', function ($location, $post_id) {
-            $location = remove_query_arg('message', $location);
-            $location = add_query_arg('message', 99, $location);
-            return $location;
-        }, 10, 2);
-    }
+    dispatcher_process_action($post, $action);
 }, 10, 3);
 
 function dispatcher_format_interval($delta) {
