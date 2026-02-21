@@ -4,6 +4,7 @@ defined('ABSPATH') || exit;
 class DispatcherAdmin {
 
     static function init() {
+
         add_action('admin_menu', function () {
             add_submenu_page('edit.php?post_type=' . Dispatcher::POST_TYPE,
                     'Settings', 'Settings', 'administrator', 'dispatcher_settings',
@@ -38,25 +39,34 @@ class DispatcherAdmin {
             wp_send_json_error('You do not have permission to do this.', 403);
         }
 
-        $post_id = sanitize_key($_POST['post_id']);
+        $post_id = (int) ($_POST['post_id'] ?? 0);
         $audience_data = get_post_meta($post_id, 'audience_data', true);
         if (!is_array($audience_data)) {
             $audience_data = [];
         }
 
-        $audience_id = sanitize_key($_POST['audience_id']);
+        $audience_id = sanitize_key($_POST['audience_id'] ?? '');
 
         $audience = new stdClass();
         $audience->id = $audience_id;
         $audience->data = $audience_data;
 
+        // It's better to have a specific action to avoid to trigger all the Audiences
         //do_action('dispatcher_audience_settings', $audience);
-        do_action('dispatcher_audience_settings_' . $audience_id, $audience);
+        if (has_action('dispatcher_audience_settings_' . $audience_id)) {
+            do_action('dispatcher_audience_settings_' . $audience_id, $audience);
+        } else {
+            echo 'No specific settings.';
+        }
         wp_die();
     }
 }
 
-DispatcherAdmin::init();
+add_action('init', function () {
+    if (current_user_can('administrator')) {
+        DispatcherAdmin::init();
+    }
+});
 
 if (!isset(Dispatcher::$settings['gutenberg_all_blocks'])) {
     add_filter('allowed_block_types_all', function ($allowed_blocks, $editor_context) {
@@ -132,6 +142,13 @@ add_action('current_screen', function () {
     }
 });
 
+/**
+ * Builds the Audience object for an email, used to provide the audience to actions and
+ * filters.
+ *
+ * @param WP_Post $email
+ * @return \stdClass
+ */
 function dispatcher_build_audience($email) {
     $audience_id = sanitize_key(get_post_meta($email->ID, 'audience_id', true));
 
@@ -152,6 +169,7 @@ function dispatcher_build_audience($email) {
 }
 
 /**
+ * Process an action (send, pause, ...) triggered from the editor.
  *
  * @param WP_Post $email
  * @param string $action
@@ -162,7 +180,7 @@ function dispatcher_process_action($email, $action) {
         update_post_meta($email->ID, 'dispatcher_send_time', time());
         update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
         $audience = dispatcher_build_audience($email);
-        do_action('dispatcher_audience_update_total', $audience);
+        do_action('dispatcher_audience_update_total_' . $audience->id, $audience);
         update_post_meta($email->ID, 'audience_total', (int) $audience->total);
         update_post_meta($email->ID, 'dispatcher_status', 'sending');
         Dispatcher::run();
@@ -174,7 +192,7 @@ function dispatcher_process_action($email, $action) {
         update_post_meta($email->ID, 'dispatcher_send_time', time());
         update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
         $audience = dispatcher_build_audience($email);
-        do_action('dispatcher_audience_update_total', $audience);
+        do_action('dispatcher_audience_update_total_' . $audience->id, $audience);
         update_post_meta($email->ID, 'audience_total', (int) $audience->total);
         update_post_meta($email->ID, 'dispatcher_status', 'sending');
         Dispatcher::run();
@@ -458,14 +476,17 @@ function dispatcher_echo_audience_meta_box_content($post) {
     <script>
         jQuery(function () {
             jQuery('select#audience').on('change', function () {
+                jQuery('#audience-settings').html('Loading...');
+                this.disabled = true;
                 const data = {
                     action: 'dispatcher_audience_settings',
                     audience_nonce: jQuery('#audience_nonce').val(),
                     audience_id: this.value,
-                    post_id: jQuery('#audience_post_id').val(),
+                    post_id: jQuery('#audience_post_id').val()
                 };
                 jQuery.post('<?= admin_url('admin-ajax.php') ?>', data, function (response) {
                     jQuery('#audience-settings').html(response);
+                    jQuery('select#audience').prop('disabled', false);
                 }).fail(function () {
                     alert('Server error happened.');
                 }).always(function () {
@@ -478,7 +499,7 @@ function dispatcher_echo_audience_meta_box_content($post) {
     $audiences = Dispatcher::get_audiences();
     $audience_id = sanitize_key(get_post_meta($post->ID, 'audience_id', true));
     wp_nonce_field('save', 'audience_nonce');
-    echo '<input type="hidden" name="audience_post_id" id="audience_post_id" value="' . $post->ID . '">';
+    echo '<input type="hidden" name="audience_post_id" id="audience_post_id" value="' . ((int)$post->ID) . '">';
     echo '<select name="audience_id" id="audience">';
     foreach ($audiences as $audience) {
         echo '<option value="', esc_attr(sanitize_key($audience->id)), '" ', ($audience_id == $audience->id ? 'selected' : ''), '>', esc_html($audience->name), '</option>';
@@ -489,7 +510,7 @@ function dispatcher_echo_audience_meta_box_content($post) {
 }
 
 // Save action from the classic editor
-add_action('save_post_dsp_email', function ($post_id, $post, $update) {
+add_action('save_post_' . Dispatcher::POST_TYPE, function ($post_id, $post, $update) {
 
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
         return;
@@ -505,7 +526,8 @@ add_action('save_post_dsp_email', function ($post_id, $post, $update) {
         $audience->data = $audience_data;
         $audience->total = 0;
 
-        do_action('dispatcher_audience_save', $audience);
+        //do_action('dispatcher_audience_save', $audience);
+        do_action('dispatcher_audience_save_' . $audience_id, $audience);
 
         update_post_meta($post_id, 'audience_id', $audience_id);
         update_post_meta($post_id, 'audience_data', $audience->data);
