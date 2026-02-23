@@ -40,21 +40,26 @@ class DispatcherAdmin {
         }
 
         $post_id = (int) ($_POST['post_id'] ?? 0);
-        $audience_data = get_post_meta($post_id, 'audience_data', true);
+        $audience_settings = get_post_meta($post_id, 'audience_settings', true);
         if (!is_array($audience_data)) {
-            $audience_data = [];
+            $audience_settings = [];
         }
 
         $audience_id = sanitize_key($_POST['audience_id'] ?? '');
 
-        $audience = new stdClass();
-        $audience->id = $audience_id;
-        $audience->data = $audience_data;
+        Dispatcher::init_audiences();
+
+        $audience = Dispatcher::$audiences[$audience_id] ?? false;
+
+        if (!$audience) {
+            echo 'Error: audience not found!';
+            return;
+        }
 
         // It's better to have a specific action to avoid to trigger all the Audiences
         //do_action('dispatcher_audience_settings', $audience);
-        if (has_action('dispatcher_audience_settings_' . $audience_id)) {
-            do_action('dispatcher_audience_settings_' . $audience_id, $audience);
+        if (method_exists($audience, 'form')) {
+            $audience->form($audience_settings);
         } else {
             echo 'No specific settings.';
         }
@@ -496,12 +501,14 @@ function dispatcher_echo_audience_meta_box_content($post) {
         });
     </script>
     <?php
-    $audiences = Dispatcher::get_audiences();
+
+    Dispatcher::init_audiences();
+
     $audience_id = sanitize_key(get_post_meta($post->ID, 'audience_id', true));
     wp_nonce_field('save', 'audience_nonce');
     echo '<input type="hidden" name="audience_post_id" id="audience_post_id" value="' . ((int)$post->ID) . '">';
     echo '<select name="audience_id" id="audience">';
-    foreach ($audiences as $audience) {
+    foreach (Dispatcher::$audiences as $audience) {
         echo '<option value="', esc_attr(sanitize_key($audience->id)), '" ', ($audience_id == $audience->id ? 'selected' : ''), '>', esc_html($audience->name), '</option>';
     }
     echo '</select>';
@@ -518,20 +525,20 @@ add_action('save_post_' . Dispatcher::POST_TYPE, function ($post_id, $post, $upd
 
     if (wp_verify_nonce($_POST['audience_nonce'] ?? '', 'save')) {
 
-        $audience_data = wp_unslash($_POST['audience_data'] ?? []);
+        $audience_settings = wp_unslash($_POST['audience_data'] ?? []);
         $audience_id = sanitize_key($_POST['audience_id'] ?? '');
 
-        $audience = new stdClass();
-        $audience->id = $audience_id;
-        $audience->data = $audience_data;
-        $audience->total = 0;
+//        $audience = new stdClass();
+//        $audience->id = $audience_id;
+//        $audience->data = $audience_data;
+//        $audience->total = 0;
 
         //do_action('dispatcher_audience_save', $audience);
-        do_action('dispatcher_audience_save_' . $audience_id, $audience);
+        //do_action('dispatcher_audience_save_' . $audience_id, $audience);
 
         update_post_meta($post_id, 'audience_id', $audience_id);
-        update_post_meta($post_id, 'audience_data', $audience->data);
-        update_post_meta($post_id, 'audience_total', (int) $audience->total);
+        update_post_meta($post_id, 'audience_settings', $audience_settings);
+        //update_post_meta($post_id, 'audience_total', (int) $audience->total);
     }
 
     $action = sanitize_key($_POST['dispatcher_action'] ?? '');

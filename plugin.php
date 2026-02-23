@@ -25,6 +25,7 @@ class Dispatcher {
     const SLUG = 'dispatcher';
 
     static $settings;
+    static $audiences = [];
 
     static function init() {
         self::$settings = get_option(self::SLUG . '_settings', []);
@@ -98,7 +99,6 @@ class Dispatcher {
         add_action('dispatcher_audience_update_total', function ($audience) {
             global $wpdb;
             $audience->total = $wpdb->get_var("select count(*) from {$wpdb->users}");
-
         });
         add_filter('dispatcher_contacts_dsp-all', function ($contacts, $audience) {
 
@@ -145,19 +145,33 @@ class Dispatcher {
         }, 10, 2);
     }
 
-    static function get_audiences() {
-        $default = new stdClass();
-        $default->id = 'dsp-all';
-        $default->name = 'All WP Users';
+    static function init_audiences() {
+        if (!self::$audiences) {
+            do_action('dispatcher_audiences_init');
+        }
+    }
 
-        $audiences = apply_filters('dispatcher_audiences', []);
-        array_unshift($audiences, $default);
+    static function register_audience($audience) {
+        if (empty($audience->id)) {
+            return new WP_Error('1', 'Missing or empty ID');
+        }
+        if (empty($audience->name)) {
+            return new WP_Error('2', 'Missing or empty name');
+        }
+        $audience->id = sanitize_key($audience->id);
+        if (isset(self::$audiences[$audience->id])) {
+            return new WP_Error('3', 'ID already registered');
+        }
+        if (!method_exists($audience, 'get_contacts')) {
+            return new WP_Error('4', 'Missing get_contacts method');
+        }
+        if (!method_exists($audience, 'get_total')) {
+            return new WP_Error('5', 'Missing get_total method');
+        }
 
-        $default = new stdClass();
-        $default->id = 'dsp-roles';
-        $default->name = 'WP Users by role';
-        array_unshift($audiences, $default);
-        return $audiences;
+        self::$audiences[$audience->id] = $audience;
+
+        return true;
     }
 
     /**
@@ -200,28 +214,38 @@ class Dispatcher {
 
         $count = intval(get_post_meta($email->ID, 'dispatcher_count', true));
 
-        // Get the content to build the message
-        // ...
-
         $audience_id = sanitize_key(get_post_meta($email->ID, 'audience_id', true));
+
+        self::init_audiences();
+
+        $audience = self::$audiences[$audience_id] ?? false;
+
+        if (!$audience) {
+            self::log(__METHOD__, 'No audience for email', $email->ID);
+            update_post_meta($email->ID, 'dispatcher_status', 'sent');
+            self::log(__METHOD__, 'Completed');
+            self::log(__METHOD__, 'End');
+            return;
+        }
 
         $last_contact_id = sanitize_key(get_post_meta($email->ID, 'last_contact_id', true));
 
-        $audience_data = get_post_meta($email->ID, 'audience_data', true);
-        if (!is_array($audience_data)) {
-            $audience_data = [];
+        $audience_settings = get_post_meta($email->ID, 'audience_settings', true);
+        if (!is_array($audience_settings)) {
+            $audience_settings = [];
         }
 
 
-        $audience = new stdClass();
-        $audience->id = $audience_id;
-        $audience->data = $audience_data;
-        $audience->last_contact_id = $last_contact_id;
-        $audience->max = $max;
 
-        self::log(__METHOD__, 'Audience', $audience);
+        $params = new stdClass();
+        $params->settings = $audience_settings;
+        $params->last_contact_id = $last_contact_id;
+        $params->max = $max;
 
-        $contacts = apply_filters('dispatcher_contacts', [], $audience);
+        self::log(__METHOD__, 'Audience params', $params);
+
+        $contacts = $audience->get_contacts($params);
+
         if (!$contacts) {
             update_post_meta($email->ID, 'dispatcher_status', 'sent');
             self::log(__METHOD__, 'Completed');
@@ -395,6 +419,9 @@ register_deactivation_hook(__FILE__, function () {
 });
 
 Dispatcher::init();
+
+require_once __DIR__ . '/includes/php-api.php';
+require_once __DIR__ . '/includes/audiences.php';
 
 if (is_admin()) {
     require_once __DIR__ . '/admin/admin.php';
