@@ -154,24 +154,23 @@ add_action('current_screen', function () {
  * @param WP_Post $email
  * @return \stdClass
  */
-function dispatcher_build_audience($email) {
-    $audience_id = sanitize_key(get_post_meta($email->ID, 'audience_id', true));
+function dispatcher_build_audience_params($email) {
 
     $last_contact_id = sanitize_key(get_post_meta($email->ID, 'last_contact_id', true));
 
-    $audience_data = get_post_meta($email->ID, 'audience_data', true);
-    if (!is_array($audience_data)) {
-        $audience_data = [];
+    $audience_settings = get_post_meta($email->ID, 'audience_settings', true);
+    if (!is_array($audience_settings)) {
+        $audience_settings = [];
     }
-    $total = (int) get_post_meta($email->ID, 'audience_total', true);
+    //$total = (int) get_post_meta($email->ID, 'audience_total', true);
 
-    $audience = new stdClass();
-    $audience->id = $audience_id;
-    $audience->data = $audience_data;
+    $params = new stdClass();
+    $audience->settings = $audience_settings;
     $audience->last_contact_id = $last_contact_id;
-    $audience->total = $total;
-    return $audience;
+    return $params;
 }
+
+
 
 /**
  * Process an action (send, pause, ...) triggered from the editor.
@@ -184,9 +183,13 @@ function dispatcher_process_action($email, $action) {
     if ($action === 'send') {
         update_post_meta($email->ID, 'dispatcher_send_time', time());
         update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
-        $audience = dispatcher_build_audience($email);
-        do_action('dispatcher_audience_update_total_' . $audience->id, $audience);
-        update_post_meta($email->ID, 'audience_total', (int) $audience->total);
+        $audience = Dispatcher::get_audience(get_post_meta($email->ID, 'audience_id', true));
+        if ($audience) {
+            $params = dispatcher_build_audience_params($email);
+            update_post_meta($email->ID, 'audience_total', (int) $audience->get_total($params));
+        } else {
+            update_post_meta($email->ID, 'audience_total', 0);
+        }
         update_post_meta($email->ID, 'dispatcher_status', 'sending');
         Dispatcher::run();
     } elseif ($action === 'pause') {
@@ -196,9 +199,13 @@ function dispatcher_process_action($email, $action) {
     } elseif ($action === 'resend') {
         update_post_meta($email->ID, 'dispatcher_send_time', time());
         update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
-        $audience = dispatcher_build_audience($email);
-        do_action('dispatcher_audience_update_total_' . $audience->id, $audience);
-        update_post_meta($email->ID, 'audience_total', (int) $audience->total);
+        $audience = Dispatcher::get_audience(get_post_meta($email->ID, 'audience_id', true));
+        if ($audience) {
+            $params = dispatcher_build_audience_params($email);
+            update_post_meta($email->ID, 'audience_total', (int) $audience->get_total($params));
+        } else {
+            update_post_meta($email->ID, 'audience_total', 0);
+        }
         update_post_meta($email->ID, 'dispatcher_status', 'sending');
         Dispatcher::run();
     } elseif ($action === 'stop') {

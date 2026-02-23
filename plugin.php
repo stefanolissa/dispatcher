@@ -81,7 +81,7 @@ class Dispatcher {
         }
 
         add_action('dispatcher_run', [self::class, 'run']);
-//
+
         if (isset(self::$settings['gutenberg_debug'])) {
             add_action('template_redirect', function () {
                 $object = get_queried_object();
@@ -95,60 +95,17 @@ class Dispatcher {
                 }
             }, 1);
         }
-
-        add_action('dispatcher_audience_update_total', function ($audience) {
-            global $wpdb;
-            $audience->total = $wpdb->get_var("select count(*) from {$wpdb->users}");
-        });
-        add_filter('dispatcher_contacts_dsp-all', function ($contacts, $audience) {
-
-        }, 10, 2);
-
-        add_filter('dispatcher_contacts', function ($contacts, $audience) {
-            global $wpdb;
-            if ($audience->id === 'dsp-all') {
-                //$users = $wpdb->get_results($wpdb->prepare("select ID, user_email from {$wpdb->users} where id > %d limit %d", $audience->last_contact_id, $audience->max));
-                $users = $wpdb->get_results($wpdb->prepare("select ID, user_email from {$wpdb->users} where id > %d limit %d", 0, $audience->max));
-                foreach ($users as $user) {
-                    $contact = new stdClass();
-                    $contact->id = $user->ID;
-                    $contact->email = $user->user_email;
-                    $contacts[] = $contact;
-                }
-                return $contacts;
-            }
-
-            if ($audience->id === 'dsp-roles') {
-
-                $roles = $audience->data['roles'] ?? [];
-                while (count($contacts) < $audience->max) {
-                    $db_users = $wpdb->get_results($wpdb->prepare("select ID from {$wpdb->users} where id > %d limit %d", $audience->last_contact_id, $audience->max));
-                    if (empty($db_users)) {
-                        return $contacts;
-                    }
-                    foreach ($db_users as $db_user) {
-
-                        $user = new WP_User($db_user->ID);
-                        if (empty(array_intersect($user->roles, $roles))) {
-                            continue;
-                        }
-                        $contact = new stdClass();
-                        $contact->id = $user->ID;
-                        $contact->email = $user->user_email;
-                        $contacts[] = $contact;
-                    }
-                }
-                return $contacts;
-            }
-
-            return $contacts;
-        }, 10, 2);
     }
 
     static function init_audiences() {
         if (!self::$audiences) {
             do_action('dispatcher_audiences_init');
         }
+    }
+
+    static function get_audience($id) {
+        self::init_audiences();
+        return self::$audiences[$id] ?? null;
     }
 
     static function register_audience($audience) {
@@ -291,7 +248,6 @@ class Dispatcher {
             }
         }
 
-
         self::log(__METHOD__, 'End');
     }
 
@@ -304,83 +260,6 @@ class Dispatcher {
             $message = DispatcherClassic::render($email);
         }
         return $message;
-    }
-
-    static function get_subscribers_statistics() {
-        global $wpdb;
-        self::log(__METHOD__, $input);
-        return [
-            'total_subscribers' => $wpdb->get_var("select count(*) from {$wpdb->users}")
-        ];
-    }
-
-    static function create_email($input) {
-        self::log(__METHOD__, $input);
-        $subject = wp_strip_all_tags($input['subject']);
-        $content = '';
-        $content_type = $input['content_type'];
-
-        switch ($content_type) {
-            case 'last posts summary':
-                $posts = get_posts();
-                foreach ($posts as $post) {
-                    $content .= '<h2>' . $post->post_title . '</h2>';
-                    $content .= '<p>' . get_the_excerpt($post) . '</p>';
-                }
-                break;
-            case 'last post content':
-                $posts = get_posts(['numberposts' => 1]);
-                $post = $posts[0];
-                $content .= '<h1>' . $post->post_title . '</h1>';
-
-                if (function_exists('has_blocks') && has_blocks($post)) {
-                    $content .= do_blocks($post->post_content);
-                } else {
-                    $content .= wpautop($post->post_content);
-                }
-                break;
-            default:
-                $content = '<p>Write something interesting here...</p>';
-        }
-
-        $r = wp_insert_post([
-            'post_title' => $subject,
-            'post_content' => $content,
-            'post_type' => self::POST_TYPE,
-                ], true, false);
-
-        if (is_wp_error($r)) {
-            self::log('Error creating the email', $r->get_error_message());
-            return 0;
-        }
-
-        return (int) $r;
-    }
-
-    static function send_email(array $input) {
-        self::log(__METHOD__, $input);
-
-        $email = get_post($input['email_id']);
-
-        if (!$email || $email->post_type !== self::POST_TYPE) {
-            self::log(__METHOD__, 'The ID does not identify and email');
-            return 'Problem: the email was not found the ID is not correct.';
-        }
-
-        $status = get_post_meta($email->ID, 'dispatcher_status', true);
-
-        if ($status === 'sending') {
-            return 'Problem: I\'m already sending this email, nothing else to do.';
-        }
-
-        if ($status === 'sent') {
-            return 'Problem: this email has already been sent, to resend it you should duplicate it and send the new copy.';
-        }
-
-        update_post_meta($email->ID, 'dispatcher_status', 'sending');
-        update_post_meta($email->ID, 'dispatcher_user_id', 0);
-
-        return 'The email is now sending, the process will start shortly, you can check the progress opening the message details page.';
     }
 
     /**
