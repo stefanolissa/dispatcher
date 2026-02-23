@@ -34,6 +34,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //$settings['test_email'] = strtolower(sanitize_email($settings['test_email'] ?? ''));
         update_option('dispatcher_settings', $settings, false);
     }
+
+    if (isset($_POST['run'])) {
+        Dispatcher::run();
+    }
 }
 
 $settings = get_option('dispatcher_settings', []);
@@ -218,6 +222,9 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
 
         <p>
             <button name="save" class="button button-primary">Save</button>
+            <?php if (WP_DEBUG) { ?>
+            <button name="run" class="button button-secondary">Run</button>
+            <?php } ?>
         </p>
 
     </form>

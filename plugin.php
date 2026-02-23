@@ -146,11 +146,11 @@ class Dispatcher {
         $emails = get_posts(['post_type' => self::POST_TYPE, 'post_status' => 'any', 'posts_per_page' => 100,
             'meta_query' => [
                 [
-                    'key' => 'dispatcher_status',
+                    'key' => 'dsp_status',
                     'value' => 'sending',
                     'compare' => '=’',
                 ]],
-            'meta_key' => 'dispatcher_send_time', 'orderby' => 'meta_value_num', 'order' => 'ASC']);
+            'meta_key' => 'dsp_send_time', 'orderby' => 'meta_value_num', 'order' => 'ASC']);
 
         if (!$emails) {
             self::log(__METHOD__, 'No emails to send');
@@ -169,9 +169,9 @@ class Dispatcher {
         //foreach ($emails as $email) {
         self::log(__METHOD__, 'Processing ' . $email->post_title);
 
-        $count = intval(get_post_meta($email->ID, 'dispatcher_count', true));
+        $count = intval(get_post_meta($email->ID, 'dsp_count', true));
 
-        $audience_id = sanitize_key(get_post_meta($email->ID, 'audience_id', true));
+        $audience_id = sanitize_key(get_post_meta($email->ID, 'dsp_audience_id', true));
 
         self::init_audiences();
 
@@ -179,15 +179,15 @@ class Dispatcher {
 
         if (!$audience) {
             self::log(__METHOD__, 'No audience for email', $email->ID);
-            update_post_meta($email->ID, 'dispatcher_status', 'sent');
+            update_post_meta($email->ID, 'dsp_status', 'sent');
             self::log(__METHOD__, 'Completed');
             self::log(__METHOD__, 'End');
             return;
         }
 
-        $last_contact_id = sanitize_key(get_post_meta($email->ID, 'last_contact_id', true));
+        $last_contact_id = sanitize_key(get_post_meta($email->ID, 'dsp_last_contact_id', true));
 
-        $audience_settings = get_post_meta($email->ID, 'audience_settings', true);
+        $audience_settings = get_post_meta($email->ID, 'dsp_audience_settings', true);
         if (!is_array($audience_settings)) {
             $audience_settings = [];
         }
@@ -204,7 +204,7 @@ class Dispatcher {
         $contacts = $audience->get_contacts($params);
 
         if (!$contacts) {
-            update_post_meta($email->ID, 'dispatcher_status', 'sent');
+            update_post_meta($email->ID, 'dsp_status', 'sent');
             self::log(__METHOD__, 'Completed');
             self::log(__METHOD__, 'End');
             return;
@@ -220,7 +220,7 @@ class Dispatcher {
         $message = self::render_message($email);
 
         foreach ($contacts as $contact) {
-            update_post_meta($email->ID, 'dispatcher_last_contact_id', $contact->id);
+            update_post_meta($email->ID, 'dsp_last_contact_id', $contact->id);
 
             self::log(__METHOD__, 'Sending to ' . $contact->email);
 
@@ -235,7 +235,7 @@ class Dispatcher {
             $result = wp_mail($to, $email->post_title, $message, $headers);
 
             $count++;
-            update_post_meta($email->ID, 'dispatcher_count', $count);
+            update_post_meta($email->ID, 'dsp_count', $count);
 
             if ($result) {
                 self::log(__METHOD__, 'Sent to: ' . $contact->email);

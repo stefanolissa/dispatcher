@@ -20,18 +20,12 @@ class DispatcherAdmin {
             });
         }
 
-        add_action('wp_ajax_dispatcher_audience_settings', [self::class, 'dispatcher_audience_settings']);
-
-        add_action('dispatcher_audience_settings_dsp-roles', function ($audience) {
-            $roles = $audience->data['roles'] ?? [];
-            foreach (wp_roles()->roles as $key => $wp_role) {
-                echo '<label><input type="checkbox" name="audience_data[roles][]" value="', esc_attr($key), '" ',
-                in_array($key, $roles) ? 'checked' : '',
-                '> ', esc_html($wp_role['name']), '</label><br>';
-            }
-        });
+        add_action('wp_ajax_dsp_audience_settings', [self::class, 'dispatcher_audience_settings']);
     }
 
+    /**
+     * Loads and echoes the specific audience settings for the editor.
+     */
     static function dispatcher_audience_settings() {
         check_ajax_referer('save', 'audience_nonce');
 
@@ -40,16 +34,14 @@ class DispatcherAdmin {
         }
 
         $post_id = (int) ($_POST['post_id'] ?? 0);
-        $audience_settings = get_post_meta($post_id, 'audience_settings', true);
-        if (!is_array($audience_data)) {
+        $audience_settings = get_post_meta($post_id, 'dsp_audience_settings', true);
+        if (!is_array($audience_settings)) {
             $audience_settings = [];
         }
 
         $audience_id = sanitize_key($_POST['audience_id'] ?? '');
 
-        Dispatcher::init_audiences();
-
-        $audience = Dispatcher::$audiences[$audience_id] ?? false;
+        $audience = Dispatcher::get_audience($audience_id);
 
         if (!$audience) {
             echo 'Error: audience not found!';
@@ -59,7 +51,9 @@ class DispatcherAdmin {
         // It's better to have a specific action to avoid to trigger all the Audiences
         //do_action('dispatcher_audience_settings', $audience);
         if (method_exists($audience, 'form')) {
-            $audience->form($audience_settings);
+            $params = new stdClass();
+            $params->settings = $audience_settings;
+            $audience->form($params);
         } else {
             echo 'No specific settings.';
         }
@@ -156,21 +150,19 @@ add_action('current_screen', function () {
  */
 function dispatcher_build_audience_params($email) {
 
-    $last_contact_id = sanitize_key(get_post_meta($email->ID, 'last_contact_id', true));
+    $last_contact_id = sanitize_key(get_post_meta($email->ID, 'dsp_last_contact_id', true));
 
-    $audience_settings = get_post_meta($email->ID, 'audience_settings', true);
+    $audience_settings = get_post_meta($email->ID, 'dsp_audience_settings', true);
     if (!is_array($audience_settings)) {
         $audience_settings = [];
     }
     //$total = (int) get_post_meta($email->ID, 'audience_total', true);
 
     $params = new stdClass();
-    $audience->settings = $audience_settings;
-    $audience->last_contact_id = $last_contact_id;
+    $params->settings = $audience_settings;
+    $params->last_contact_id = $last_contact_id;
     return $params;
 }
-
-
 
 /**
  * Process an action (send, pause, ...) triggered from the editor.
@@ -181,36 +173,36 @@ function dispatcher_build_audience_params($email) {
 function dispatcher_process_action($email, $action) {
     Dispatcher::log('Processing action', $action);
     if ($action === 'send') {
-        update_post_meta($email->ID, 'dispatcher_send_time', time());
-        update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
+        update_post_meta($email->ID, 'dsp_send_time', time());
+        update_post_meta($email->ID, 'dsp_last_contact_id', '0');
         $audience = Dispatcher::get_audience(get_post_meta($email->ID, 'audience_id', true));
         if ($audience) {
             $params = dispatcher_build_audience_params($email);
-            update_post_meta($email->ID, 'audience_total', (int) $audience->get_total($params));
+            update_post_meta($email->ID, 'dsp_audience_total', (int) $audience->get_total($params));
         } else {
-            update_post_meta($email->ID, 'audience_total', 0);
+            update_post_meta($email->ID, 'dsp_audience_total', 0);
         }
-        update_post_meta($email->ID, 'dispatcher_status', 'sending');
-        Dispatcher::run();
+        update_post_meta($email->ID, 'dsp_status', 'sending');
+        //Dispatcher::run();
     } elseif ($action === 'pause') {
-        update_post_meta($email->ID, 'dispatcher_status', 'paused');
+        update_post_meta($email->ID, 'dsp_status', 'paused');
     } elseif ($action === 'continue') {
-        update_post_meta($email->ID, 'dispatcher_status', 'sending');
+        update_post_meta($email->ID, 'dsp_status', 'sending');
     } elseif ($action === 'resend') {
-        update_post_meta($email->ID, 'dispatcher_send_time', time());
-        update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
+        update_post_meta($email->ID, 'dsp_send_time', time());
+        update_post_meta($email->ID, 'dsp_last_contact_id', '0');
         $audience = Dispatcher::get_audience(get_post_meta($email->ID, 'audience_id', true));
         if ($audience) {
             $params = dispatcher_build_audience_params($email);
-            update_post_meta($email->ID, 'audience_total', (int) $audience->get_total($params));
+            update_post_meta($email->ID, 'dsp_audience_total', (int) $audience->get_total($params));
         } else {
-            update_post_meta($email->ID, 'audience_total', 0);
+            update_post_meta($email->ID, 'dsp_audience_total', 0);
         }
-        update_post_meta($email->ID, 'dispatcher_status', 'sending');
-        Dispatcher::run();
+        update_post_meta($email->ID, 'dsp_status', 'sending');
+        //Dispatcher::run();
     } elseif ($action === 'stop') {
-        update_post_meta($email->ID, 'dispatcher_last_contact_id', '0');
-        update_post_meta($email->ID, 'dispatcher_status', 'draft');
+        update_post_meta($email->ID, 'dsp_last_contact_id', '0');
+        update_post_meta($email->ID, 'dsp_status', 'draft');
     } elseif ($action === 'test') {
 
         $headers = ['Content-Type: text/html'];
@@ -262,7 +254,7 @@ add_filter('enter_title_here', function ($title, $post) {
     return $title;
 }, 10, 2);
 
-add_filter('manage_dispatcher_email_posts_columns', function ($columns) {
+add_filter('manage_dsp_email_posts_columns', function ($columns) {
     //$columns = array_merge(['id' => 'ID'], $columns);
     $columns['status'] = 'Status';
     $columns['send_time'] = 'Sending date';
@@ -272,31 +264,35 @@ add_filter('manage_dispatcher_email_posts_columns', function ($columns) {
     return $columns;
 });
 
-add_action('manage_dispatcher_email_posts_custom_column', function ($column, $post_id) {
+add_action('manage_dsp_email_posts_custom_column', function ($column, $post_id) {
     global $wpdb;
     switch ($column) {
         case 'id' :
             echo (int) $post_id;
             break;
         case 'audience' :
-            $audience = get_post_meta($post_id, 'dispatcher_audience', true);
+            $audience = Dispatcher::get_audience(get_post_meta($post_id, 'audience_id', true));
 
-            $roles = $audience['roles'] ?? [];
-            if (!$roles) {
-                echo 'None';
+            if ($audience) {
+                echo esc_html($audience->name);
             } else {
-                echo esc_html(implode(', ', $roles));
+                echo 'None';
             }
             break;
         case 'status' :
-            $status = get_post_meta($post_id, 'dispatcher_status', true) ?: 'draft';
+            $status = get_post_meta($post_id, 'dsp_status', true) ?: 'draft';
             echo '<span class="dsp-status dsp-status-', esc_attr($status), '">';
             echo esc_html(ucfirst($status));
             if ($status === 'sending') {
-                $total = (int) $wpdb->get_var("select count(*) from {$wpdb->users}");
-                $last_id = (int) get_post_meta($post_id, 'dispatcher_user_id', true);
-                $sent = (int) $wpdb->get_var($wpdb->prepare("select count(*) from {$wpdb->users} where id <= %d", $last_id));
-                $percent = floor($sent * 100.0 / $total);
+                $total = (int) get_post_meta($post->ID, 'dsp_audience_total', true) ?: 0;
+                $sent = (int) get_post_meta($post->ID, 'dsp_count', true) ?: 0;
+
+                if ($total) {
+                    $percent = floor($sent * 100.0 / $total);
+                } else {
+                    $percent = 'Unknown';
+                }
+
                 echo ' (', (int) $percent, '%)';
             }
             echo '</span>';
@@ -343,12 +339,16 @@ function dispatcher_status_classic_meta_box($post) {
         }
     </script>
     <?php
-    $status = get_post_meta($post->ID, 'dispatcher_status', true) ?: 'draft';
+    $status = get_post_meta($post->ID, 'dsp_status', true) ?: 'draft';
 
-    $total = (int) $wpdb->get_var("select count(*) from {$wpdb->users}");
-    $last_id = (int) get_post_meta($post->ID, 'dispatcher_user_id', true);
-    $sent = (int) $wpdb->get_var($wpdb->prepare("select count(*) from {$wpdb->users} where id <= %d", $last_id));
-    $percent = floor($sent * 100.0 / $total);
+    $total = (int) get_post_meta($post->ID, 'dsp_audience_total', true) ?: 0;
+    $sent = (int) get_post_meta($post->ID, 'dsp_count', true) ?: 0;
+
+    if ($total) {
+        $percent = floor($sent * 100.0 / $total);
+    } else {
+        $percent = 'Unknown';
+    }
 
     echo '<div id="dsp-status-meta-box">';
 
@@ -491,7 +491,7 @@ function dispatcher_echo_audience_meta_box_content($post) {
                 jQuery('#audience-settings').html('Loading...');
                 this.disabled = true;
                 const data = {
-                    action: 'dispatcher_audience_settings',
+                    action: 'dsp_audience_settings',
                     audience_nonce: jQuery('#audience_nonce').val(),
                     audience_id: this.value,
                     post_id: jQuery('#audience_post_id').val()
@@ -508,12 +508,11 @@ function dispatcher_echo_audience_meta_box_content($post) {
         });
     </script>
     <?php
-
     Dispatcher::init_audiences();
 
-    $audience_id = sanitize_key(get_post_meta($post->ID, 'audience_id', true));
+    $audience_id = sanitize_key(get_post_meta($post->ID, 'dsp_audience_id', true));
     wp_nonce_field('save', 'audience_nonce');
-    echo '<input type="hidden" name="audience_post_id" id="audience_post_id" value="' . ((int)$post->ID) . '">';
+    echo '<input type="hidden" name="audience_post_id" id="audience_post_id" value="' . ((int) $post->ID) . '">';
     echo '<select name="audience_id" id="audience">';
     foreach (Dispatcher::$audiences as $audience) {
         echo '<option value="', esc_attr(sanitize_key($audience->id)), '" ', ($audience_id == $audience->id ? 'selected' : ''), '>', esc_html($audience->name), '</option>';
@@ -539,7 +538,6 @@ add_action('save_post_' . Dispatcher::POST_TYPE, function ($post_id, $post, $upd
 //        $audience->id = $audience_id;
 //        $audience->data = $audience_data;
 //        $audience->total = 0;
-
         //do_action('dispatcher_audience_save', $audience);
         //do_action('dispatcher_audience_save_' . $audience_id, $audience);
 

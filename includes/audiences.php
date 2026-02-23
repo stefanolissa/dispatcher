@@ -34,10 +34,10 @@ class DispactcheAudienceRoles {
     var $name = 'WP users by roles';
 
     function get_contacts($params) {
-
+        global $wpdb;
         $roles = $params->settings['roles'] ?? [];
         $contacts = [];
-        while (count($contacts) < $audience->max) {
+        while (count($contacts) < $params->max) {
             $db_users = $wpdb->get_results($wpdb->prepare("select ID from {$wpdb->users} where id > %d limit %d", $params->last_contact_id, $params->max));
             if (empty($db_users)) {
                 return $contacts;
@@ -70,6 +70,7 @@ class DispactcheAudienceRoles {
     }
 
     function form($params) {
+        var_dump($params);
         $roles = $params->settings['roles'] ?? [];
         foreach (wp_roles()->roles as $key => $wp_role) {
             echo '<label><input type="checkbox" name="audience_data[roles][]" value="', esc_attr($key), '" ',
