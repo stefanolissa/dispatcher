@@ -271,10 +271,10 @@ add_action('manage_dsp_email_posts_custom_column', function ($column, $post_id) 
             echo (int) $post_id;
             break;
         case 'audience' :
-            $audience = Dispatcher::get_audience(get_post_meta($post_id, 'audience_id', true));
+            $audience = Dispatcher::get_audience(get_post_meta($post_id, 'dsp_audience_id', true));
 
             if ($audience) {
-                echo esc_html($audience->name);
+                echo esc_html($audience->get_name());
             } else {
                 echo 'None';
             }
@@ -514,8 +514,8 @@ function dispatcher_echo_audience_meta_box_content($post) {
     wp_nonce_field('save', 'audience_nonce');
     echo '<input type="hidden" name="audience_post_id" id="audience_post_id" value="' . ((int) $post->ID) . '">';
     echo '<select name="audience_id" id="audience">';
-    foreach (Dispatcher::$audiences as $audience) {
-        echo '<option value="', esc_attr(sanitize_key($audience->id)), '" ', ($audience_id == $audience->id ? 'selected' : ''), '>', esc_html($audience->name), '</option>';
+    foreach (Dispatcher::$audiences as $id => $audience) {
+        echo '<option value="', esc_attr($id), '" ', ($audience_id == $id ? 'selected' : ''), '>', esc_html($audience->get_name()), '</option>';
     }
     echo '</select>';
 

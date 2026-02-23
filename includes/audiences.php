@@ -2,8 +2,13 @@
 
 class DispatcherAudienceAll {
 
-    var $id = 'dsp-all';
-    var $name = 'All WP users';
+    function get_id() {
+        return 'dsp-all';
+    }
+
+    function get_name() {
+        return 'All WP users';
+    }
 
     function get_contacts($params) {
         global $wpdb;
@@ -30,8 +35,13 @@ class DispatcherAudienceAll {
 
 class DispactcheAudienceRoles {
 
-    var $id = 'dsp-roles';
-    var $name = 'WP users by roles';
+    function get_id() {
+        return 'dsp-roles';
+    }
+
+    function get_name() {
+        return 'WP users by roles';
+    }
 
     function get_contacts($params) {
         global $wpdb;

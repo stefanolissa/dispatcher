@@ -109,16 +109,19 @@ class Dispatcher {
     }
 
     static function register_audience($audience) {
-        if (empty($audience->id)) {
-            return new WP_Error('1', 'Missing or empty ID');
+        if (!method_exists($audience, 'get_id')) {
+            return new WP_Error('1', 'Missing get_id method');
         }
-        if (empty($audience->name)) {
-            return new WP_Error('2', 'Missing or empty name');
+
+        $id = sanitize_key($audience->get_id());
+        if (isset(self::$audiences[$id])) {
+            return new WP_Error('2', 'ID already registered');
         }
-        $audience->id = sanitize_key($audience->id);
-        if (isset(self::$audiences[$audience->id])) {
-            return new WP_Error('3', 'ID already registered');
+
+        if (!method_exists($audience, 'get_name')) {
+            return new WP_Error('1', 'Missing get_name method');
         }
+
         if (!method_exists($audience, 'get_contacts')) {
             return new WP_Error('4', 'Missing get_contacts method');
         }
@@ -126,7 +129,7 @@ class Dispatcher {
             return new WP_Error('5', 'Missing get_total method');
         }
 
-        self::$audiences[$audience->id] = $audience;
+        self::$audiences[$id] = $audience;
 
         return true;
     }
