@@ -6,7 +6,7 @@ defined('ABSPATH') || exit;
   Plugin Name: Dispatcher
   Plugin URI: https://www.satollo.net/plugins/dispatcher
   Description: Mass mailing your users, not for real
-  Version: 0.0.1
+  Version: 0.0.2
   Author: Stefano Lissa
   Author URI: https://www.satollo.net
   Disclaimer: Use at your own risk. No warranty expressed or implied is provided.
@@ -17,7 +17,7 @@ defined('ABSPATH') || exit;
   Update URI: satollo-dispatcher
  */
 
-define('DISPATCHER_VERSION', '0.0.1');
+define('DISPATCHER_VERSION', '0.0.2');
 
 class Dispatcher {
 
@@ -132,6 +132,10 @@ class Dispatcher {
         self::$audiences[$id] = $audience;
 
         return true;
+    }
+
+    static function update_post_meta($post_id, $key, $value) {
+        update_post_meta($post_id, 'dsp_' . $key, $value);
     }
 
     /**
