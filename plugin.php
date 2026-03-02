@@ -19,6 +19,15 @@ defined('ABSPATH') || exit;
 
 define('DISPATCHER_VERSION', '0.0.2');
 
+add_action('plugins_loaded', function () {
+    if (defined('SATOLLO_DISPATCHER_VERSION')) {
+        // Admin notices
+        return;
+    }
+
+    //require_once __DIR__ . '/includes/main.php';
+});
+
 class Dispatcher {
 
     const POST_TYPE = 'dsp_email';
