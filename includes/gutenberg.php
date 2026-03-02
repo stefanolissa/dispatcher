@@ -747,7 +747,7 @@ class DispatcherGutenberg {
         $chunks = array_chunk($data['innerBlocks'], $columns);
         $size = [$image_width, $image_width, true];
         $b = '<!-- gallery -->' . PHP_EOL;
-        $b .= '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">' . PHP_EOL;
+        $b .= '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">' . "\n";
         foreach ($chunks as $chunk) {
             $b .= ' <tr>' . PHP_EOL;
             foreach ($chunk as $block) {
@@ -784,6 +784,33 @@ class DispatcherGutenberg {
         return self::render_data($data, false) . self::wrap($b, $data);
     }
 
+    static function render_media_text($content, $data) {
+
+        $content = preg_replace('|<figure.*?</figure>|i', '', $content);
+
+        $tags = new WP_HTML_Tag_Processor($content);
+        $tags->next_tag();
+        $tags->set_attribute('class', '');
+        $content = $tags->get_updated_html();
+        $alt = 'Photo';
+        $width = 300;
+        $b = '';
+
+        $b .= '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">' . "\n";
+        $b .= "<tr>\n";
+        $b .= "<td width='50%'>\n";
+
+        $b .= wp_get_attachment_image($data['attrs']['mediaId'], [$width, 0], ['alt' => $alt, 'style' => 'border: 0; display: block; font-size: 12px; max-width: 100%; height: auto;']);
+
+        $b .= "</td>\n";
+        $b .= "<td width='50%'>\n";
+        $b .= $content;
+        $b .= "</td>\n";
+        $b .= "</tr>\n</table>\n";
+
+        return self::render_data($data, false) . self::wrap($b, $data);
+    }
+
     static function render_data($data, $esc_html = true) {
         if (!self::$debug)
             return '';
@@ -807,8 +834,8 @@ class DispatcherGutenberg {
             case 'core/heading':
                 return self::render_heading($content, $data);
 
-            case 'core/cover':
-                return '';
+//            case 'core/cover':
+//                return '';
 
             case 'core/spacer':
                 return self::render_spacer($content, $data);
@@ -840,6 +867,9 @@ class DispatcherGutenberg {
 
             case 'core/image':
                 return self::render_image($content, $data);
+
+            case 'core/media-text':
+                return self::render_media_text($content, $data);
         }
 
         return $content;

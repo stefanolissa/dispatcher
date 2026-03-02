@@ -64,7 +64,7 @@ hosting provider silently drop them, [read here](https://www.satollo.net/how-ema
 Emails are sent using WP, so if they're not delivered **it is not a problem of this plugin**.
 
 Install [WP Mail Logging](https://wordpress.org/plugins/wp-mail-logging/) to see al the emails sent
-and if there are errors.
+by your site, hence even the ones sent by Dispatcher, and to see if there are errors.
 
 If there are errors, please contact your hosting provider.
 

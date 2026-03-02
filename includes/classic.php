@@ -26,15 +26,10 @@ class DispatcherClassic {
         $footer = '</body></html>';
         $snippet = '<div style="font-size: 10px; font-family: sans-serif; display: none;">' . wp_strip_all_tags($email->post_excerpt) . '</div>';
 
-//        if (has_blocks($email)) {
-//            $content = do_blocks($email->post_content);
-//        } else {
+        // Is it the correct order?
         $content = wpautop($email->post_content);
-//        }
         $content = do_shortcode($content);
 
-        // Remove useless spaces, compress TD and TR, ...
-        // TODO
 
         $buffer = $head . $snippet . '<div style="font-family: sans-serif">' .
                 $content . '</div>' . $footer;

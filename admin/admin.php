@@ -14,7 +14,7 @@ class DispatcherAdmin {
             );
         });
 
-        if ($_GET['page'] ?? '' === 'dispatcher_settings') {
+        if (str_starts_with($_GET['page'] ?? '', 'dispatcher_')) {
             add_action('admin_enqueue_scripts', function ($hook_suffix) {
                 wp_enqueue_style('dispatcher', plugin_dir_url(__FILE__) . 'admin.css', [], DISPATCHER_VERSION);
             });
@@ -69,7 +69,7 @@ add_action('init', function () {
 
 if (!isset(Dispatcher::$settings['gutenberg_all_blocks'])) {
     add_filter('allowed_block_types_all', function ($allowed_blocks, $editor_context) {
-        if ($editor_context->post_type === Dispatcher::POST_TYPE) {
+        if ($editor_context->post->post_type === Dispatcher::POST_TYPE) {
             $allowed_blocks = [
                 'core/paragraph',
                 'core/heading',
@@ -79,6 +79,7 @@ if (!isset(Dispatcher::$settings['gutenberg_all_blocks'])) {
                 'core/columns',
                 'core/group',
                 'core/spacer',
+                'core/media-text',
                     //'core/latest-posts'
             ];
         }
@@ -107,14 +108,36 @@ add_action('current_screen', function () {
 
         add_action('admin_notices', function () {
 
-            $next = wp_next_scheduled('dispatcher_run');
-            ?>
-            <div class="notice notice-info is-dismissible">
-                <p>
-                    Emails are sent in batches every 15 minutes. Next batch in <?= dispatcher_format_interval($next - time()) ?>
-                </p>
-            </div>
-            <?php
+            $emails = get_posts(['post_type' => Dispatcher::POST_TYPE, 'post_status' => 'any', 'posts_per_page' => 1,
+                'meta_query' => [
+                    [
+                        'key' => 'dsp_status',
+                        'value' => 'sending',
+                        'compare' => '=’',
+                    ]],
+                'meta_key' => 'dsp_send_time', 'orderby' => 'meta_value_num', 'order' => 'ASC']);
+
+            if ($emails) {
+                $next = wp_next_scheduled('dispatcher_run');
+                if ($next < time() - 900) {
+                    ?>
+                    <div class="notice notice-warning is-dismissible">
+                        <p>
+                            Sending... but the WordPress scheduler is late.
+                            <a href="https://www.satollo.net/plugin/dispatcher" target="_blank" style="font-weight: bold">Read how to solve</a>.
+                        </p>
+                    </div>
+                    <?php
+                } else {
+                    ?>
+                    <div class="notice notice-info is-dismissible">
+                        <p>
+                            Sending... next batch in <?= dispatcher_format_interval($next - time()) ?>
+                        </p>
+                    </div>
+                    <?php
+                }
+            }
         });
     }
 
@@ -148,11 +171,14 @@ add_action('current_screen', function () {
  * @param WP_Post $email
  * @return \stdClass
  */
-function dispatcher_build_audience_params($email) {
+function dispatcher_build_audience_params($email_id) {
+    if (is_object($email_id)) {
+        $email_id = $email_id->ID;
+    }
 
-    $last_contact_id = sanitize_key(get_post_meta($email->ID, 'dsp_last_contact_id', true));
+    $last_contact_id = sanitize_key(get_post_meta($email_id, 'dsp_last_contact_id', true));
 
-    $audience_settings = get_post_meta($email->ID, 'dsp_audience_settings', true);
+    $audience_settings = get_post_meta($email_id, 'dsp_audience_settings', true);
     if (!is_array($audience_settings)) {
         $audience_settings = [];
     }
@@ -272,9 +298,12 @@ add_action('manage_dsp_email_posts_custom_column', function ($column, $post_id) 
             break;
         case 'audience' :
             $audience = Dispatcher::get_audience(get_post_meta($post_id, 'dsp_audience_id', true));
-
+            $params = dispatcher_build_audience_params($post_id);
             if ($audience) {
                 echo esc_html($audience->get_name());
+                if (method_exists($audience, 'get_target_description')) {
+                    echo '<div style="font-size: .9em">', esc_html($audience->get_target_description($params)), '</div>';
+                }
             } else {
                 echo 'None';
             }
@@ -284,8 +313,8 @@ add_action('manage_dsp_email_posts_custom_column', function ($column, $post_id) 
             echo '<span class="dsp-status dsp-status-', esc_attr($status), '">';
             echo esc_html(ucfirst($status));
             if ($status === 'sending') {
-                $total = (int) get_post_meta($post->ID, 'dsp_audience_total', true) ?: 0;
-                $sent = (int) get_post_meta($post->ID, 'dsp_count', true) ?: 0;
+                $total = (int) get_post_meta($post_id, 'dsp_audience_total', true) ?: 0;
+                $sent = (int) get_post_meta($post_id, 'dsp_count', true) ?: 0;
 
                 if ($total) {
                     $percent = floor($sent * 100.0 / $total);

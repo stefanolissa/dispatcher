@@ -1,5 +1,28 @@
 <?php
 
+defined('ABSPATH') || exit;
+
+/**
+ * Only for code completion. Do not use.
+ */
+class DispatcherAudienceParams {
+
+    var $last_contact_id;
+    var $max;
+
+    /** @var array */
+    var $settings;
+}
+
+/**
+ * Only for code completion. Do not use.
+ */
+class DispatcherContact {
+
+    var $id;
+    var $email;
+}
+
 class DispatcherAudienceAll {
 
     function get_id() {
@@ -28,12 +51,15 @@ class DispatcherAudienceAll {
         return $wpdb->get_var("select count(*) from {$wpdb->users}");
     }
 
+    /**
+     * @param DispatcherAudienceParams $params
+     */
     function form($params) {
         echo 'No settings needed';
     }
 }
 
-class DispactcheAudienceRoles {
+class DispatcherAudienceRoles {
 
     function get_id() {
         return 'dsp-roles';
@@ -43,6 +69,24 @@ class DispactcheAudienceRoles {
         return 'WP users by roles';
     }
 
+    /**
+     *
+     * @param DispatcherAudienceParams $params
+     * @return string
+     */
+    function get_target_description($params = null) {
+        if (is_null($params)) {
+            return '';
+        }
+        return implode(', ', $params->settings['roles']);
+    }
+
+    /**
+     *
+     * @global wpdb $wpdb
+     * @param DispatcherAudienceParams $params
+     * @return DispatcherContact[]
+     */
     function get_contacts($params) {
         global $wpdb;
         $roles = $params->settings['roles'] ?? [];
@@ -71,7 +115,7 @@ class DispactcheAudienceRoles {
      * Only a per-excess estimate
      *
      * @global wpdb $wpdb
-     * @param stdClass $params
+     * @param DispatcherAudienceParams $params
      * @return int
      */
     function get_total($params) {
@@ -79,8 +123,10 @@ class DispactcheAudienceRoles {
         return $wpdb->get_var("select count(*) from {$wpdb->users}");
     }
 
+    /**
+     * @param DispatcherAudienceParams $params
+     */
     function form($params) {
-        var_dump($params);
         $roles = $params->settings['roles'] ?? [];
         foreach (wp_roles()->roles as $key => $wp_role) {
             echo '<label><input type="checkbox" name="audience_data[roles][]" value="', esc_attr($key), '" ',
@@ -90,7 +136,38 @@ class DispactcheAudienceRoles {
     }
 }
 
+class DispatcherAudienceWoocommerce {
+
+    function get_id() {
+        return 'dsp-wc';
+    }
+
+    function get_name() {
+        return 'Woocommerce customers';
+    }
+
+    function get_contacts($params) {
+        global $wpdb;
+        $contacts = [];
+
+        return $contacts;
+    }
+
+    function get_total($params) {
+        global $wpdb;
+        return 0; //$wpdb->get_var("select count(*) from {$wpdb->users}");
+    }
+
+    /**
+     * @param DispatcherAudienceParams $params
+     */
+    function form($params) {
+        echo 'Still under construction.';
+    }
+}
+
 add_action('dispatcher_audiences_init', function () {
     dispatcher_register_audience(new DispatcherAudienceAll());
-    dispatcher_register_audience(new DispactcheAudienceRoles());
+    dispatcher_register_audience(new DispatcherAudienceRoles());
+    dispatcher_register_audience(new DispatcherAudienceWoocommerce());
 });

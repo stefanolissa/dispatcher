@@ -13,7 +13,7 @@ defined('ABSPATH') || exit;
   Text Domain: dispatcher
   License: GPLv2 or later
   Requires at least: 6.9
-  Requires PHP: 8.2
+  Requires PHP: 8.1
   Update URI: satollo-dispatcher
  */
 
@@ -84,9 +84,11 @@ class Dispatcher {
 
         if (isset(self::$settings['gutenberg_debug'])) {
             add_action('template_redirect', function () {
+
                 $object = get_queried_object();
 
                 if ($object instanceof WP_Post && $object->post_type === self::POST_TYPE) {
+
                     if (isset($_GET['dispatcher'])) {
                         require_once __DIR__ . '/includes/gutenberg.php';
                         echo DispatcherGutenberg::render($object, 'web');
@@ -108,6 +110,12 @@ class Dispatcher {
         return self::$audiences[$id] ?? null;
     }
 
+    /**
+     * Developers will use dispatcher_audience_register(...).
+     *
+     * @param type $audience
+     * @return \WP_Error|bool
+     */
     static function register_audience($audience) {
         if (!method_exists($audience, 'get_id')) {
             return new WP_Error('1', 'Missing get_id method');
@@ -135,7 +143,25 @@ class Dispatcher {
     }
 
     static function update_post_meta($post_id, $key, $value) {
-        update_post_meta($post_id, 'dsp_' . $key, $value);
+        if (is_object($post_id)) {
+            $post_id = $post_id->ID;
+        }
+        return update_post_meta($post_id, 'dsp_' . $key, $value);
+    }
+
+    static function get_post_meta($post_id, $key) {
+        if (is_object($post_id)) {
+            $post_id = $post_id->ID;
+        }
+        return get_post_meta($post_id, 'dsp_' . $key, true);
+    }
+
+    static function get_post_meta_array($post_id, $key) {
+        $value = self::get_post_meta($post_id, $key);
+        if (!is_array($value)) {
+            $value = [];
+        }
+        return $value;
     }
 
     /**
@@ -150,7 +176,7 @@ class Dispatcher {
         // Extract the emails to be sent
         // any – retrieves any status except for ‘inherit’, ‘trash’ and ‘auto-draft’.
         // Custom post statuses with ‘exclude_from_search’ set to true are also excluded.
-        $emails = get_posts(['post_type' => self::POST_TYPE, 'post_status' => 'any', 'posts_per_page' => 100,
+        $emails = get_posts(['post_type' => self::POST_TYPE, 'post_status' => 'any', 'posts_per_page' => 1,
             'meta_query' => [
                 [
                     'key' => 'dsp_status',
@@ -176,9 +202,9 @@ class Dispatcher {
         //foreach ($emails as $email) {
         self::log(__METHOD__, 'Processing ' . $email->post_title);
 
-        $count = intval(get_post_meta($email->ID, 'dsp_count', true));
+        $count = intval(self::get_post_meta($email->ID, 'sent_count'));
 
-        $audience_id = sanitize_key(get_post_meta($email->ID, 'dsp_audience_id', true));
+        $audience_id = sanitize_key(self::get_post_meta($email->ID, 'audience_id'));
 
         self::init_audiences();
 
@@ -186,15 +212,15 @@ class Dispatcher {
 
         if (!$audience) {
             self::log(__METHOD__, 'No audience for email', $email->ID);
-            update_post_meta($email->ID, 'dsp_status', 'sent');
+            self::update_post_meta($email->ID, 'status', 'sent');
             self::log(__METHOD__, 'Completed');
             self::log(__METHOD__, 'End');
             return;
         }
 
-        $last_contact_id = sanitize_key(get_post_meta($email->ID, 'dsp_last_contact_id', true));
+        $last_contact_id = sanitize_key(self::get_post_meta($email->ID, 'last_contact_id'));
 
-        $audience_settings = get_post_meta($email->ID, 'dsp_audience_settings', true);
+        $audience_settings = self::get_post_meta($email->ID, 'audience_settings');
         if (!is_array($audience_settings)) {
             $audience_settings = [];
         }
@@ -211,7 +237,7 @@ class Dispatcher {
         $contacts = $audience->get_contacts($params);
 
         if (!$contacts) {
-            update_post_meta($email->ID, 'dsp_status', 'sent');
+            self::update_post_meta($email->ID, 'status', 'sent');
             self::log(__METHOD__, 'Completed');
             self::log(__METHOD__, 'End');
             return;
@@ -227,12 +253,12 @@ class Dispatcher {
         $message = self::render_message($email);
 
         foreach ($contacts as $contact) {
-            update_post_meta($email->ID, 'dsp_last_contact_id', $contact->id);
+            self::update_post_meta($email->ID, 'last_contact_id', $contact->id);
 
-            self::log(__METHOD__, 'Sending to ' . $contact->email);
+            self::log(__METHOD__, 'Sending to ', $contact->email);
 
             if (self::$settings['redirect_email'] ?? '') {
-                self::log(__METHOD__, 'Redirecting to ' . self::$settings['redirect_email']);
+                self::log(__METHOD__, 'Redirecting to ', self::$settings['redirect_email']);
                 $to = self::$settings['redirect_email'];
             } else {
                 $to = $contact->email;
@@ -242,10 +268,10 @@ class Dispatcher {
             $result = wp_mail($to, $email->post_title, $message, $headers);
 
             $count++;
-            update_post_meta($email->ID, 'dsp_count', $count);
+            self::update_post_meta($email->ID, 'sent_count', $count);
 
             if ($result) {
-                self::log(__METHOD__, 'Sent to: ' . $contact->email);
+                self::log(__METHOD__, 'Sent to: ', $contact->email);
             } else {
                 self::log(__METHOD__, 'Sending error');
             }

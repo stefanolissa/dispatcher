@@ -1,0 +1,29 @@
+{
+    "blockName": "core\/media-text",
+    "attrs": {
+        "mediaId": 52,
+        "mediaLink": "http:\/\/www.wordpress.lan\/ai\/my-second-long-post\/pexels-nicollazzi-xiong-208366-668353\/",
+        "mediaType": "image",
+        "backgroundColor": "accent-2"
+    },
+    "innerBlocks": [
+        {
+            "blockName": "core\/paragraph",
+            "attrs": {
+                "placeholder": "Content\u2026",
+                "className": "is-style-default"
+            },
+            "innerBlocks": [],
+            "innerHTML": "\n<p class=\"is-style-default\">content<\/p>\n",
+            "innerContent": [
+                "\n<p class=\"is-style-default\">content<\/p>\n"
+            ]
+        }
+    ],
+    "innerHTML": "\n<div class=\"wp-block-media-text is-stacked-on-mobile has-accent-2-background-color has-background\"><figure class=\"wp-block-media-text__media\"><img src=\"http:\/\/www.wordpress.lan\/ai\/wp-content\/uploads\/2025\/11\/pexels-nicollazzi-xiong-208366-668353-1024x682.jpg\" alt=\"\" class=\"wp-image-52 size-full\"\/><\/figure><div class=\"wp-block-media-text__content\"><\/div><\/div>\n",
+    "innerContent": [
+        "\n<div class=\"wp-block-media-text is-stacked-on-mobile has-accent-2-background-color has-background\"><figure class=\"wp-block-media-text__media\"><img src=\"http:\/\/www.wordpress.lan\/ai\/wp-content\/uploads\/2025\/11\/pexels-nicollazzi-xiong-208366-668353-1024x682.jpg\" alt=\"\" class=\"wp-image-52 size-full\"\/><\/figure><div class=\"wp-block-media-text__content\">",
+        null,
+        "<\/div><\/div>\n"
+    ]
+}
