@@ -5,8 +5,8 @@ defined('ABSPATH') || exit;
 /*
   Plugin Name: Dispatcher
   Plugin URI: https://www.satollo.net/plugins/dispatcher
-  Description: Mass mailing your users, not for real
-  Version: 0.0.2
+  Description: Send emails to your audience in seconds
+  Version: 0.0.3
   Author: Stefano Lissa
   Author URI: https://www.satollo.net
   Disclaimer: Use at your own risk. No warranty expressed or implied is provided.
@@ -17,7 +17,7 @@ defined('ABSPATH') || exit;
   Update URI: satollo-dispatcher
  */
 
-define('DISPATCHER_VERSION', '0.0.2');
+define('DISPATCHER_VERSION', '0.0.3');
 
 add_action('plugins_loaded', function () {
     if (defined('SATOLLO_DISPATCHER_VERSION')) {
@@ -41,12 +41,12 @@ class Dispatcher {
 
         add_action('init', function () {
             $show_in_rest = isset(self::$settings['gutenberg']);
-//            if (is_admin() && isset($_GET['post']) && isset($_GET['action']) && $_GET['action'] === 'edit') {
-//                $p = get_post($_GET['post']);
-//                if (!has_blocks($p)) {
-//                    $show_in_rest = false;
-//                }
-//            }
+            if (is_admin() && isset($_GET['post']) && isset($_GET['action']) && $_GET['action'] === 'edit') {
+                $p = get_post($_GET['post']);
+                if (has_blocks($p)) {
+                    $show_in_rest = true;
+                }
+            }
 
             $public = true;
             register_post_type(self::POST_TYPE, [
@@ -131,24 +131,87 @@ class Dispatcher {
         }
 
         $id = sanitize_key($audience->get_id());
+
+        if (!$id) {
+            return new WP_Error('2', 'Invalid ID');
+        }
+
         if (isset(self::$audiences[$id])) {
-            return new WP_Error('2', 'ID already registered');
+            return new WP_Error('3', 'ID already registered');
         }
 
         if (!method_exists($audience, 'get_name')) {
-            return new WP_Error('1', 'Missing get_name method');
+            return new WP_Error('4', 'Missing get_name method');
         }
 
         if (!method_exists($audience, 'get_contacts')) {
-            return new WP_Error('4', 'Missing get_contacts method');
+            return new WP_Error('5', 'Missing get_contacts method');
         }
-        if (!method_exists($audience, 'get_total')) {
-            return new WP_Error('5', 'Missing get_total method');
-        }
+//        if (!method_exists($audience, 'get_total')) {
+//            return new WP_Error('5', 'Missing get_total method');
+//        }
 
         self::$audiences[$id] = $audience;
 
         return true;
+    }
+
+    static function get_audience_total($audience, $params) {
+        if (is_scalar($audience)) {
+            $audience = self::get_audience($audience);
+            if (!$audience) {
+                return -1;
+            }
+        }
+
+        // If there is a (probably) optimized method
+        if (method_exists($audience, 'get_total')) {
+            return $audience->get_total($params);
+        }
+
+        $start_time = time();
+        $total = 0;
+        $params->last_contact_id = 0;
+        $params->max = 1000;
+
+        while (true) {
+
+            $contacts = $audience->get_contacts($params);
+
+            $total += count($contacts);
+            if (empty($contacts)) {
+                break;
+            }
+            if (time() - $start_time > 5) {
+                return -1;
+            }
+            $params->last_contact_id = $contacts[count($contacts) - 1]->id;
+        }
+
+        gc_collect_cycles();
+
+        return $total;
+    }
+
+    /**
+     * Builds an object wirh the audience parameters to used when invoking the audience methods.
+     *
+     * @param object|int $email_id
+     * @return \stdClass
+     */
+    function get_audience_params($email_id) {
+        if (is_object($email_id)) {
+            $email_id = $email_id->ID;
+        }
+
+        $last_contact_id = sanitize_key(self::get_post_meta($email_id, 'last_contact_id'));
+
+        $audience_settings = self::get_post_meta_array($email_id, 'audience_settings');
+
+        $params = new stdClass();
+        $params->settings = $audience_settings;
+        $params->last_contact_id = $last_contact_id;
+        return $params;
     }
 
     static function update_post_meta($post_id, $key, $value) {
@@ -211,7 +274,7 @@ class Dispatcher {
         //foreach ($emails as $email) {
         self::log(__METHOD__, 'Processing ' . $email->post_title);
 
-        $count = intval(self::get_post_meta($email->ID, 'sent_count'));
+        $count = intval(self::get_post_meta($email->ID, 'sent'));
 
         $audience_id = sanitize_key(self::get_post_meta($email->ID, 'audience_id'));
 
@@ -233,8 +296,6 @@ class Dispatcher {
         if (!is_array($audience_settings)) {
             $audience_settings = [];
         }
-
-
 
         $params = new stdClass();
         $params->settings = $audience_settings;
@@ -264,7 +325,7 @@ class Dispatcher {
         foreach ($contacts as $contact) {
             self::update_post_meta($email->ID, 'last_contact_id', $contact->id);
 
-            self::log(__METHOD__, 'Sending to ', $contact->email);
+            self::log(__METHOD__, 'Sending to', $contact->email);
 
             if (self::$settings['redirect_email'] ?? '') {
                 self::log(__METHOD__, 'Redirecting to ', self::$settings['redirect_email']);
@@ -277,7 +338,7 @@ class Dispatcher {
             $result = wp_mail($to, $email->post_title, $message, $headers);
 
             $count++;
-            self::update_post_meta($email->ID, 'sent_count', $count);
+            self::update_post_meta($email->ID, 'sent', $count);
 
             if ($result) {
                 self::log(__METHOD__, 'Sent to: ', $contact->email);
@@ -293,6 +354,11 @@ class Dispatcher {
         self::log(__METHOD__, 'End');
     }
 
+    /**
+     *
+     * @param WP_Post $email
+     * @return string
+     */
     static function render_message($email) {
         if (has_blocks($email)) {
             require_once __DIR__ . '/includes/gutenberg.php';
@@ -347,7 +413,6 @@ require_once __DIR__ . '/includes/audiences.php';
 if (is_admin()) {
     require_once __DIR__ . '/admin/admin.php';
 }
-
 
 if (is_admin() || defined('DOING_CRON') && DOING_CRON) {
     require_once __DIR__ . '/includes/repo.php';

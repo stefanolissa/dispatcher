@@ -20,13 +20,38 @@ class DispatcherAdmin {
             });
         }
 
-        add_action('wp_ajax_dsp_audience_settings', [self::class, 'dispatcher_audience_settings']);
+        add_action('wp_ajax_dsp_audience_settings', [self::class, 'ajax_audience_settings']);
+        add_action('wp_ajax_dsp_audience_total', [self::class, 'ajax_audience_total']);
+    }
+
+    static function get_audience($id) {
+        return Dispatcher::get_audience($id);
+    }
+
+    static function get_audience_total($audience, $params) {
+        return Dispatcher::get_audience_total($audience, $params);
+    }
+
+    static function get_post_meta($post_id, $key) {
+        return Dispatcher::get_post_meta($post_id, $key);
+    }
+
+    static function get_post_meta_array($post_id, $key) {
+        return Dispatcher::get_post_meta_array($post_id, $key);
+    }
+
+    static function update_post_meta($post_id, $key, $value) {
+        Dispatcher::update_post_meta($post_id, $key, $value);
+    }
+
+    static function log(...$texts) {
+        Dispatcher::log($texts);
     }
 
     /**
      * Loads and echoes the specific audience settings for the editor.
      */
-    static function dispatcher_audience_settings() {
+    static function ajax_audience_settings() {
         check_ajax_referer('save', 'audience_nonce');
 
         if (!current_user_can('administrator')) {
@@ -34,14 +59,11 @@ class DispatcherAdmin {
         }
 
         $post_id = (int) ($_POST['post_id'] ?? 0);
-        $audience_settings = get_post_meta($post_id, 'dsp_audience_settings', true);
-        if (!is_array($audience_settings)) {
-            $audience_settings = [];
-        }
+        $audience_settings = self::get_post_meta_array($post_id, 'audience_settings');
 
         $audience_id = sanitize_key($_POST['audience_id'] ?? '');
 
-        $audience = Dispatcher::get_audience($audience_id);
+        $audience = self::get_audience($audience_id);
 
         if (!$audience) {
             echo 'Error: audience not found!';
@@ -57,6 +79,44 @@ class DispatcherAdmin {
         } else {
             echo 'No specific settings.';
         }
+        wp_die();
+    }
+
+    static function ajax_audience_total() {
+        check_ajax_referer('save', 'audience_nonce');
+
+        if (!current_user_can('administrator')) {
+            wp_send_json_error('You do not have permission to do this.', 403);
+        }
+
+        //$post_id = (int) ($_POST['post_id'] ?? 0);
+        $audience_settings = wp_unslash($_POST['audience_data'] ?? []);
+        if (!is_array($audience_settings)) {
+            $audience_settings = [];
+        }
+
+        $audience_id = sanitize_key($_POST['audience_id'] ?? '');
+
+        $audience = self::get_audience($audience_id);
+
+        if (!$audience) {
+            echo 'Error: audience not found!';
+            return;
+        }
+
+        $params = new stdClass();
+        $params->settings = $audience_settings;
+        $total = self::get_audience_total($audience, $params);
+        $post_id = (int) ($_POST['audience_post_id'] ?? 0);
+        self::update_post_meta($post_id, 'audience_total', $total);
+
+        if ($total == -1) {
+            echo 'Not computable';
+            wp_die();
+        }
+
+        echo $total;
+
         wp_die();
     }
 }
@@ -92,54 +152,9 @@ add_action('current_screen', function () {
     $screen = get_current_screen();
 
     if ($screen->base === 'edit' && $screen->post_type === Dispatcher::POST_TYPE) {
-
-        add_action('admin_head', function () {
-            echo '<style>
-        .column-id { width: 4rem }
-        .column-status { width: 6rem }
-        .column-audience { width: 15rem }
-        .column-send-time { width: 15rem }
-        span.dsp-status { background-color: #ddd; display: inline-block; padding: .2em .5em; min-width: 5em; text-align: center; border-radius: 5em; }
-        span.dsp-status.dsp-status-sending { background-color: #dde; }
-        span.dsp-status.dsp-status-sent { background-color: #ded; }
-        span.dsp-status.dsp-status-paused { background-color: #ede; }
-        </style>';
-        });
-
-        add_action('admin_notices', function () {
-
-            $emails = get_posts(['post_type' => Dispatcher::POST_TYPE, 'post_status' => 'any', 'posts_per_page' => 1,
-                'meta_query' => [
-                    [
-                        'key' => 'dsp_status',
-                        'value' => 'sending',
-                        'compare' => '=’',
-                    ]],
-                'meta_key' => 'dsp_send_time', 'orderby' => 'meta_value_num', 'order' => 'ASC']);
-
-            if ($emails) {
-                $next = wp_next_scheduled('dispatcher_run');
-                if ($next < time() - 900) {
-                    ?>
-                    <div class="notice notice-warning is-dismissible">
-                        <p>
-                            Sending... but the WordPress scheduler is late.
-                            <a href="https://www.satollo.net/plugin/dispatcher" target="_blank" style="font-weight: bold">Read how to solve</a>.
-                        </p>
-                    </div>
-                    <?php
-                } else {
-                    ?>
-                    <div class="notice notice-info is-dismissible">
-                        <p>
-                            Sending... next batch in <?= dispatcher_format_interval($next - time()) ?>
-                        </p>
-                    </div>
-                    <?php
-                }
-            }
-        });
+        require_once __DIR__ . '/includes/post-list.php';
     }
+
 
     if ($screen->base === 'post' && $screen->post_type === Dispatcher::POST_TYPE) {
         // I don't think this is the right place...
@@ -199,12 +214,13 @@ function dispatcher_build_audience_params($email_id) {
 function dispatcher_process_action($email, $action) {
     Dispatcher::log('Processing action', $action);
     if ($action === 'send') {
-        update_post_meta($email->ID, 'dsp_send_time', time());
-        update_post_meta($email->ID, 'dsp_last_contact_id', '0');
-        $audience = Dispatcher::get_audience(get_post_meta($email->ID, 'audience_id', true));
+        Dispatcher::update_post_meta($email->ID, 'send_time', time());
+        Dispatcher::update_post_meta($email->ID, 'last_contact_id', '0');
+        $audience = Dispatcher::get_audience(Dispatcher::get_post_meta($email->ID, 'audience_id'));
         if ($audience) {
             $params = dispatcher_build_audience_params($email);
-            update_post_meta($email->ID, 'dsp_audience_total', (int) $audience->get_total($params));
+            $total = DispatcherAdmin::get_audience_total($audience, $params);
+            Dispatcher::update_post_meta($email->ID, 'audience_total', $total);
         } else {
             update_post_meta($email->ID, 'dsp_audience_total', 0);
         }
@@ -215,14 +231,15 @@ function dispatcher_process_action($email, $action) {
     } elseif ($action === 'continue') {
         update_post_meta($email->ID, 'dsp_status', 'sending');
     } elseif ($action === 'resend') {
-        update_post_meta($email->ID, 'dsp_send_time', time());
-        update_post_meta($email->ID, 'dsp_last_contact_id', '0');
-        $audience = Dispatcher::get_audience(get_post_meta($email->ID, 'audience_id', true));
+        Dispatcher::update_post_meta($email->ID, 'send_time', time());
+        Dispatcher::update_post_meta($email->ID, 'last_contact_id', '0');
+        $audience = Dispatcher::get_audience(get_post_meta($email->ID, 'audience_id'));
         if ($audience) {
             $params = dispatcher_build_audience_params($email);
-            update_post_meta($email->ID, 'dsp_audience_total', (int) $audience->get_total($params));
+            $total = DispatcherAdmin::get_audience_total($audience, $params);
+            Dispatcher::update_post_meta($email->ID, 'audience_total', $total);
         } else {
-            update_post_meta($email->ID, 'dsp_audience_total', 0);
+            Dispatcher::update_post_meta($email->ID, 'audience_total', 0);
         }
         update_post_meta($email->ID, 'dsp_status', 'sending');
         //Dispatcher::run();
@@ -264,7 +281,7 @@ add_action('wp_ajax_dispatcher_gutenberg', function () {
         wp_die();
     }
 
-    dispatcher_echo_status_meta_box_content($post);
+    require_once __DIR__ . '/includes/status-metabox.php';
     wp_die();
 });
 
@@ -278,62 +295,6 @@ add_filter('enter_title_here', function ($title, $post) {
         return 'Email subject';
     }
     return $title;
-}, 10, 2);
-
-add_filter('manage_dsp_email_posts_columns', function ($columns) {
-    //$columns = array_merge(['id' => 'ID'], $columns);
-    $columns['status'] = 'Status';
-    $columns['send_time'] = 'Sending date';
-    $columns['audience'] = 'Audience';
-    $columns['id'] = 'ID';
-
-    return $columns;
-});
-
-add_action('manage_dsp_email_posts_custom_column', function ($column, $post_id) {
-    global $wpdb;
-    switch ($column) {
-        case 'id' :
-            echo (int) $post_id;
-            break;
-        case 'audience' :
-            $audience = Dispatcher::get_audience(get_post_meta($post_id, 'dsp_audience_id', true));
-            $params = dispatcher_build_audience_params($post_id);
-            if ($audience) {
-                echo esc_html($audience->get_name());
-                if (method_exists($audience, 'get_target_description')) {
-                    echo '<div style="font-size: .9em">', esc_html($audience->get_target_description($params)), '</div>';
-                }
-            } else {
-                echo 'None';
-            }
-            break;
-        case 'status' :
-            $status = get_post_meta($post_id, 'dsp_status', true) ?: 'draft';
-            echo '<span class="dsp-status dsp-status-', esc_attr($status), '">';
-            echo esc_html(ucfirst($status));
-            if ($status === 'sending') {
-                $total = (int) get_post_meta($post_id, 'dsp_audience_total', true) ?: 0;
-                $sent = (int) get_post_meta($post_id, 'dsp_count', true) ?: 0;
-
-                if ($total) {
-                    $percent = floor($sent * 100.0 / $total);
-                } else {
-                    $percent = 'Unknown';
-                }
-
-                echo ' (', (int) $percent, '%)';
-            }
-            echo '</span>';
-            break;
-
-        case 'send_time' :
-            $send_time = get_post_meta($post_id, 'dispatcher_send_time', true);
-            if ($send_time) {
-                echo wp_date(get_option('date_format') . ' ' . get_option('time_format'), $send_time);
-            }
-            break;
-    }
 }, 10, 2);
 
 add_action('add_meta_boxes', function () {
@@ -368,60 +329,12 @@ function dispatcher_status_classic_meta_box($post) {
         }
     </script>
     <?php
-    $status = get_post_meta($post->ID, 'dsp_status', true) ?: 'draft';
-
-    $total = (int) get_post_meta($post->ID, 'dsp_audience_total', true) ?: 0;
-    $sent = (int) get_post_meta($post->ID, 'dsp_count', true) ?: 0;
-
-    if ($total) {
-        $percent = floor($sent * 100.0 / $total);
-    } else {
-        $percent = 'Unknown';
-    }
-
     echo '<div id="dsp-status-meta-box">';
-
-    echo '<p style="float: left; text-align: left; font-size: 1.2em">';
-    if ($status === 'sending') {
-        echo '<p style="float: left; text-align: left; font-size: 1.2em">', esc_html(ucfirst($status)), ' (', $percent, '%)</p>';
-    } else {
-        echo esc_html(ucfirst($status));
-    }
-    echo '</p>';
-
-    echo '<p style="float: right; text-align: right">';
-
-    echo '<input type="submit" name="dispatcher_test" value="Test" class="button button-secondary button-large" onclick="return fn_dispatcher_action(\'test\')"> ';
-    if ($status === 'sending') {
-        echo '<input type="submit" name="dispatcher_stop" value="Stop" class="button button-secondary button-large" onclick="return fn_dispatcher_action(\'stop\')">';
-        echo ' <input type="submit" name="dispatcher_pause" value="Pause" class="button button-primary button-large" onclick="return fn_dispatcher_action(\'pause\')">';
-    } elseif ($status === 'draft') {
-        echo '<input type="submit" name="dispatcher_send" value="Send" class="button button-primary button-large" onclick="return fn_dispatcher_action(\'send\')">';
-    } elseif ($status === 'paused') {
-        echo '<input type="submit" name="dispatcher_continue" value="Continue" class="button button-secondary button-large" onclick="return fn_dispatcher_action(\'continue\')">';
-        echo ' <input type="submit" name="dispatcher_stop" value="Stop" class="button button-primary button-large" onclick="return fn_dispatcher_action(\'stop\')">';
-    } elseif ($status === 'sent') {
-        echo '<input type="submit" name="dispatcher_resend" value="Resend" class="button button-primary button-large" onclick="return fn_dispatcher_action(\'resend\')">';
-    }
-    echo '</p>';
-    echo '<p style="clear: both">';
-    if ($status === 'sending') {
-        $next = wp_next_scheduled('dispatcher_run');
-        echo '<small>Next batch will be sent in ', dispatcher_format_interval($next - time()), '</small>';
-    } elseif ($status === 'sent') {
-        $send_time = get_post_meta($post->ID, 'dispatcher_send_time', true);
-        if ($send_time) {
-            echo 'Sent on ', wp_date(get_option('date_format') . ' ' . get_option('time_format'), $send_time),
-            ' to ', intval(get_post_meta($post->ID, 'dispatcher_count', true)), ' users';
-        }
-    }
-    echo '</p>';
-
-    echo '<input type="hidden" name="dispatcher_action" id="dsp-action" value="">';
+    require_once __DIR__ . '/includes/status-metabox.php';
     echo '</div>';
 
     echo '<div id="dsp-audience-meta-box">';
-    dispatcher_echo_audience_meta_box_content($post);
+    require_once __DIR__ . '/includes/audience-metabox.php';
     echo '</div>';
 }
 
@@ -439,7 +352,7 @@ function dispatcher_status_gutenberg_meta_box($post) {
                 post_id: wp.data.select('core/editor').getCurrentPostId()
             };
 
-            jQuery.post('<?= admin_url('admin-ajax.php') ?>', data, function (response) {
+            jQuery.post(ajaxurl, data, function (response) {
                 if (act === 'test') {
                     alert(response);
                 } else {
@@ -453,102 +366,12 @@ function dispatcher_status_gutenberg_meta_box($post) {
     </script>
     <?php
     echo '<div id="dsp-status-meta-box">';
-    dispatcher_echo_status_meta_box_content($post);
+    require_once __DIR__ . '/includes/status-metabox.php';
     echo '</div>';
 
     echo '<div id="dsp-audience-meta-box">';
-    dispatcher_echo_audience_meta_box_content($post);
+    require_once __DIR__ . '/includes/audience-metabox.php';
     echo '</div>';
-}
-
-function dispatcher_echo_status_meta_box_content($post) {
-    global $wpdb;
-    $status = get_post_meta($post->ID, 'dispatcher_status', true) ?: 'draft';
-
-    $total = (int) $wpdb->get_var("select count(*) from {$wpdb->users}");
-    $last_id = (int) get_post_meta($post->ID, 'dispatcher_user_id', true);
-    $sent = (int) $wpdb->get_var($wpdb->prepare("select count(*) from {$wpdb->users} where id <= %d", $last_id));
-    $percent = floor($sent * 100.0 / $total);
-
-    echo '<p style="float: left; text-align: left; font-size: 1.2em">';
-    if ($status === 'sending') {
-        //$next = wp_next_scheduled('dispatcher_run');
-        echo '<p style="float: left; text-align: left; font-size: 1.2em">', esc_html(ucfirst($status)), ' (', $percent, '%)</p>';
-        //echo '<small>Next batch will be sent in ', dispatcher_format_interval($next - time()), '</small>';
-    } else {
-        echo esc_html(ucfirst($status));
-    }
-    echo '</p>';
-
-    echo '<p style="float: right; text-align: right">';
-
-    echo '<input type="submit" name="dispatcher_test" value="Test" class="button button-secondary button-large" onclick="fn_dispatcher_action(\'test\'); return false;"> ';
-
-    if ($status === 'sending') {
-        echo '<input type="submit" name="dispatcher_stop" value="Stop" class="button button-secondary button-large" onclick="return fn_dispatcher_action(\'stop\')">';
-        echo ' <input type="submit" name="dispatcher_pause" value="Pause" class="button button-primary button-large" onclick="return fn_dispatcher_action(\'pause\')">';
-    } elseif ($status === 'draft') {
-        echo '<input type="submit" name="dispatcher_send" value="Send" class="button button-primary button-large" onclick="return fn_dispatcher_action(\'send\')">';
-    } elseif ($status === 'paused') {
-        echo '<input type="submit" name="dispatcher_continue" value="Continue" class="button button-secondary button-large" onclick="return fn_dispatcher_action(\'continue\')">';
-        echo ' <input type="submit" name="dispatcher_stop" value="Stop" class="button button-primary button-large" onclick="return fn_dispatcher_action(\'stop\')">';
-    } elseif ($status === 'sent') {
-        echo '<input type="submit" name="dispatcher_resend" value="Resend" class="button button-primary button-large" onclick="return fn_dispatcher_action(\'resend\')">';
-    }
-    echo '</p>';
-    echo '<p style="clear: both">';
-    if ($status === 'sending') {
-        $next = wp_next_scheduled('dispatcher_run');
-        echo '<small>Next batch will be sent in ', dispatcher_format_interval($next - time()), '</small>';
-    } elseif ($status === 'sent') {
-        $send_time = get_post_meta($post->ID, 'dispatcher_send_time', true);
-        if ($send_time) {
-            echo 'Sent on ', wp_date(get_option('date_format') . ' ' . get_option('time_format'), $send_time),
-            ' to ', intval(get_post_meta($post->ID, 'dispatcher_count', true)), ' users';
-        }
-    }
-    echo '</p>';
-
-    echo '<input type="hidden" name="dispatcher_action" id="dispatcher_action" value="">';
-}
-
-function dispatcher_echo_audience_meta_box_content($post) {
-    ?>
-    <script>
-        jQuery(function () {
-            jQuery('select#audience').on('change', function () {
-                jQuery('#audience-settings').html('Loading...');
-                this.disabled = true;
-                const data = {
-                    action: 'dsp_audience_settings',
-                    audience_nonce: jQuery('#audience_nonce').val(),
-                    audience_id: this.value,
-                    post_id: jQuery('#audience_post_id').val()
-                };
-                jQuery.post('<?= admin_url('admin-ajax.php') ?>', data, function (response) {
-                    jQuery('#audience-settings').html(response);
-                    jQuery('select#audience').prop('disabled', false);
-                }).fail(function () {
-                    alert('Server error happened.');
-                }).always(function () {
-                });
-            });
-            jQuery('select#audience').trigger('change');
-        });
-    </script>
-    <?php
-    Dispatcher::init_audiences();
-
-    $audience_id = sanitize_key(get_post_meta($post->ID, 'dsp_audience_id', true));
-    wp_nonce_field('save', 'audience_nonce');
-    echo '<input type="hidden" name="audience_post_id" id="audience_post_id" value="' . ((int) $post->ID) . '">';
-    echo '<select name="audience_id" id="audience">';
-    foreach (Dispatcher::$audiences as $id => $audience) {
-        echo '<option value="', esc_attr($id), '" ', ($audience_id == $id ? 'selected' : ''), '>', esc_html($audience->get_name()), '</option>';
-    }
-    echo '</select>';
-
-    echo '<div id="audience-settings" style="margin-top: 1rem"></div>';
 }
 
 // Save action from the classic editor
@@ -558,21 +381,25 @@ add_action('save_post_' . Dispatcher::POST_TYPE, function ($post_id, $post, $upd
         return;
     }
 
-    if (wp_verify_nonce($_POST['audience_nonce'] ?? '', 'save')) {
+    $status = Dispatcher::get_post_meta($post->ID, 'status');
 
-        $audience_settings = wp_unslash($_POST['audience_data'] ?? []);
-        $audience_id = sanitize_key($_POST['audience_id'] ?? '');
+    if ($status != 'sending') {
+        if (wp_verify_nonce($_POST['audience_nonce'] ?? '', 'save')) {
+
+            $audience_settings = wp_unslash($_POST['audience_data'] ?? []);
+            $audience_id = sanitize_key($_POST['audience_id'] ?? '');
 
 //        $audience = new stdClass();
 //        $audience->id = $audience_id;
 //        $audience->data = $audience_data;
 //        $audience->total = 0;
-        //do_action('dispatcher_audience_save', $audience);
-        //do_action('dispatcher_audience_save_' . $audience_id, $audience);
+            //do_action('dispatcher_audience_save', $audience);
+            //do_action('dispatcher_audience_save_' . $audience_id, $audience);
 
-        update_post_meta($post_id, 'audience_id', $audience_id);
-        update_post_meta($post_id, 'audience_settings', $audience_settings);
-        //update_post_meta($post_id, 'audience_total', (int) $audience->total);
+            Dispatcher::update_post_meta($post_id, 'audience_id', $audience_id);
+            Dispatcher::update_post_meta($post_id, 'audience_settings', $audience_settings);
+            //update_post_meta($post_id, 'audience_total', (int) $audience->total);
+        }
     }
 
     $action = sanitize_key($_POST['dispatcher_action'] ?? '');
@@ -598,3 +425,5 @@ function dispatcher_format_interval($delta) {
             . ($days || $hours || $minutes ? $minutes . ' minutes, ' : '')
             . $seconds . ' seconds';
 }
+
+

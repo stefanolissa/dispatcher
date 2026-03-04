@@ -1,5 +1,4 @@
 <?php
-
 defined('ABSPATH') || exit;
 
 /**
@@ -36,7 +35,7 @@ class DispatcherAudienceAll {
     function get_contacts($params) {
         global $wpdb;
         $contacts = [];
-        $users = $wpdb->get_results($wpdb->prepare("select ID, user_email from {$wpdb->users} where id > %d limit %d", 0, $params->max));
+        $users = $wpdb->get_results($wpdb->prepare("select ID, user_email from {$wpdb->users} where id > %d order by id limit %d", $params->last_contact_id, $params->max));
         foreach ($users as $user) {
             $contact = new stdClass();
             $contact->id = $user->ID;
@@ -91,11 +90,17 @@ class DispatcherAudienceRoles {
         global $wpdb;
         $roles = $params->settings['roles'] ?? [];
         $contacts = [];
+        $contact_id = $params->last_contact_id;
         while (count($contacts) < $params->max) {
-            $db_users = $wpdb->get_results($wpdb->prepare("select ID from {$wpdb->users} where id > %d limit %d", $params->last_contact_id, $params->max));
+            $db_users = $wpdb->get_results($wpdb->prepare("select ID from {$wpdb->users} where id > %d order by id limit %d", $contact_id, $params->max));
             if (empty($db_users)) {
                 return $contacts;
             }
+
+            $contact_id = $db_users[count($db_users) - 1]->ID;
+
+            Dispatcher::log(__METHOD__, 'Extracted', count($db_users));
+
             foreach ($db_users as $db_user) {
 
                 $user = new WP_User($db_user->ID);
@@ -109,18 +114,6 @@ class DispatcherAudienceRoles {
             }
         }
         return $contacts;
-    }
-
-    /**
-     * Only a per-excess estimate
-     *
-     * @global wpdb $wpdb
-     * @param DispatcherAudienceParams $params
-     * @return int
-     */
-    function get_total($params) {
-        global $wpdb;
-        return $wpdb->get_var("select count(*) from {$wpdb->users}");
     }
 
     /**
@@ -146,23 +139,69 @@ class DispatcherAudienceWoocommerce {
         return 'Woocommerce customers';
     }
 
-    function get_contacts($params) {
-        global $wpdb;
-        $contacts = [];
-
-        return $contacts;
+    function get_target_description($params = null) {
+        if (is_null($params)) {
+            return '';
+        }
+        $days = $params->settings['days'] ?? 0;
+        if ($days) {
+            return 'Customers with an order in the last ' . $days . ' days';
+        } else {
+            return 'Customers with at least one order';
+        }
     }
 
-    function get_total($params) {
+    function get_contacts($params) {
         global $wpdb;
-        return 0; //$wpdb->get_var("select count(*) from {$wpdb->users}");
+
+        $contacts = [];
+        $us = $wpdb->get_results($wpdb->prepare("select ID as id, user_email as email from {$wpdb->users} where id > %d order by id limit %d", $params->last_contact_id, $params->max));
+        Dispatcher::log('Extracted', count($us), 'users');
+        if (!function_exists('wc_get_orders')) {
+            Dispatcher::log('wc_get_orders() does not exists');
+            return [];
+        }
+        $start_time = 0;
+        if (!empty($params->settings['days'])) {
+            $start_time = time() - ((int) $this->settings['days'] * DAY_IN_SECONDS);
+        }
+
+        foreach ($us as $u) {
+            Dispatcher::log('Processing user', $u->id);
+            $orders = wc_get_orders([
+                'customer' => $u->id,
+                'date_created' => '>=' . $start_time,
+                'status' => ['wc-completed', 'wc-processing'], // any
+                'limit' => 1
+            ]);
+
+            if (empty($orders)) {
+                Dispatcher::log('No orders found');
+                continue;
+            }
+
+            $contacts[] = $u;
+        }
+
+        return $contacts;
     }
 
     /**
      * @param DispatcherAudienceParams $params
      */
     function form($params) {
-        echo 'Still under construction.';
+        $days = $params->settings['days'] ?? 0;
+        ?>
+        With an order in the last<br>
+        <select name="audience_data[days]">
+            <option value="0" <?= $days == 0 ? 'selected' : '' ?>>No filter</option>
+            <option value="30" <?= $days == 30 ? 'selected' : '' ?>>Last 30 days</option>
+            <option value="60" <?= $days == 60 ? 'selected' : '' ?>>Last 60 days</option>
+            <option value="90" <?= $days == 90 ? 'selected' : '' ?>>Last 90 days</option>
+            <option value="180" <?= $days == 365 ? 'selected' : '' ?>>Last 180 days</option>
+            <option value="365" <?= $days == 365 ? 'selected' : '' ?>>Last 365 days</option>
+        </select>
+        <?php
     }
 }
 

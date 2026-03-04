@@ -2,3 +2,39 @@
 
 }
 
+#audience_total {
+    cursor: pointer;
+}
+
+/* POST LIST */
+.column-id {
+    width: 4rem
+}
+.column-status {
+    width: 6rem
+}
+.column-audience {
+    width: 15rem
+}
+.column-send-time {
+    width: 5rem
+}
+
+span.dsp-status {
+    background-color: #ddd;
+    display: inline-block;
+    padding: .2em .5em;
+    min-width: 5em;
+    text-align: center;
+    border-radius: 5em;
+}
+span.dsp-status.dsp-status-sending {
+    background-color: #dde;
+}
+span.dsp-status.dsp-status-sent {
+    background-color: #ded;
+}
+span.dsp-status.dsp-status-paused {
+    background-color: #ede;
+}
+
