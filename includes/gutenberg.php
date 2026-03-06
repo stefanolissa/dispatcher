@@ -222,6 +222,24 @@ class DispatcherGutenberg {
         }
     }
 
+    static function get_margin_style(&$data) {
+        $margin = $data['attrs']['style']['spacing']['margin'] ?? [];
+        if (empty($margin)) {
+            return 'margin: 0;';
+        } else {
+            return 'margin: ' . $margin['top'] . ' ' . $margin['right'] . ' ' . $margin['bottom'] . ' ' . $margin['left'] . ';';
+        }
+    }
+
+    static function get_wrapper_margin_style(&$data) {
+        $margin = $data['attrs']['style']['spacing']['margin'] ?? [];
+        if (empty($margin)) {
+            return 'margin: 0 auto;';
+        } else {
+            return 'margin-top: ' . $margin['top'] . '; margin-bottom: ' . $margin['bottom'] . '; margin-right: auto; margin-left: auto;';
+        }
+    }
+
     /**
      * Returns the background inline CSS style part getting the values from the
      * standard block attributes.
@@ -283,21 +301,56 @@ class DispatcherGutenberg {
     static function start_block(&$data) {
         $b = '';
 
-        $td_style = self::get_common_style($data);
+        $outer_table_style = '';
 
-        // Can it be considered general???
-        $align = $data['attrs']['align'] ?? 'center';
-        $td_style .= 'text-align: ' . esc_attr($align) . ';';
+        // When there is not a parent, we add the "row wrapper"
+        if (empty($data['parentBlock'])) {
+            if ($data['blockName'] === 'core/group') {
+                $align = $data['attrs']['align'] ?? '';
+                if ($align === 'full') {
+                    $outer_table_style = self::get_background_style($data);
+                }
+            }
 
-        $b .= '<table cellpadding="0" cellspacing="0" border="0" role="presentation" width="100%" style="margin: 0">' . "\n";
-        $b .= "<tr>\n";
-        $b .= "\t" . '<td style="' . esc_attr($td_style) . '">' . "\n";
+            $b .= "<!-- outer wrapper -->\n";
+            $b .= '<table class="outer" border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%" style="width: 100% !important; ' . esc_attr($outer_table_style) . '">' . "\n";
+            $b .= "<tr><td align='center' width='100%'>\n\n";
+
+            $table_style = self::get_wrapper_margin_style($data);
+            $table_style .= 'width: 100% !important; max-width: ' . (self::$email_width + 50) . 'px !important';
+            $td_style = self::get_common_style($data);
+            // Can it be considered general???
+            $align = $data['attrs']['align'] ?? 'center';
+            $td_style .= 'text-align: ' . esc_attr($align) . ';';
+
+            $b .= "<!-- inner wrapper -->\n";
+            $b .= '<table class="inner" cellpadding="0" cellspacing="0" border="0" role="presentation" width="100%" align="center" style="' . esc_attr($table_style) . '">' . "\n";
+            $b .= '<tr><td width="100%" style="' . esc_attr($td_style) . '">' . "\n\n";
+        } else {
+            // Wrapper for inner blocks
+            $table_style = self::get_margin_style($data);
+            $td_style = self::get_common_style($data);
+            // Can it be considered general???
+            $align = $data['attrs']['align'] ?? 'center';
+            $td_style .= 'text-align: ' . esc_attr($align) . ';';
+            $b .= '<table cellpadding="0" cellspacing="0" border="0" role="presentation" width="100%" style="' . esc_attr($table_style) . '">' . "\n";
+            $b .= "<tr>\n";
+            $b .= "\t" . '<td style="' . esc_attr($td_style) . '">' . "\n";
+        }
+
         return $b;
     }
 
     static function end_block(&$data) {
-
-        $b = "\t</td>\n</tr>\n</table>\n";
+        $b .= "\n";
+        if (empty($data['parentBlock'])) {
+            $b .= "</td></tr></table>\n";
+            $b .= "<!-- /inner wrapper -->\n\n";
+            $b .= "</td></tr></table>\n";
+            $b .= "<!-- /outer wrapper -->\n\n";
+        } else {
+            $b .= "\t</td></tr></table>\n";
+        }
 
         return $b;
     }
@@ -310,7 +363,6 @@ class DispatcherGutenberg {
      * @return string
      */
     static function wrap($content, $data) {
-
 
         $b = '';
         if (self::$debug) {
@@ -344,6 +396,16 @@ class DispatcherGutenberg {
     }
 
     static function render_paragraph($content, $data) {
+        if (empty($data['attrs']['align'])) {
+            $data['attrs']['align'] = 'left';
+        }
+
+        if (!empty($data['attrs']['backgroundColor'])) {
+            if (empty($data['attrs']['style']['spacing']['padding'])) {
+                $data['attrs'] = array_merge_recursive($data['attrs'], ['style' => ['spacing' => ['padding' => ['left' => '24px', 'top' => '24px', 'bottom' => '24px', 'right' => '24px']]]]);
+            }
+        }
+
         $tags = new WP_HTML_Tag_Processor($content);
         while ($tags->next_tag()) {
             $class = $tags->get_attribute('class');
@@ -693,8 +755,7 @@ class DispatcherGutenberg {
         $b = '';
 
         //$b = self::render_data($data);
-        $align = $data['attrs']['align'] ?? '';
-
+        $align = $data['attrs']['align'] ?? ''; // full is fill width
         // constrained is a normal group (?), flex is a row, flex+vertical is a stack
         $layout_type = $data['attrs']['layout']['type'] ?? 'constrained'; // flex
         $orientation = $data['attrs']['layout']['orientation'] ?? 'horizontal';
@@ -721,7 +782,7 @@ class DispatcherGutenberg {
             return self::wrap($b, $data);
         }
 
-        $b .= '  ' . $content;
+        $b .= self::wrap($content, $data);
         //$b .= self::end_block($data);
 
         return $b;
@@ -786,6 +847,7 @@ class DispatcherGutenberg {
 
     static function render_media_text($content, $data) {
 
+        $mediaPosition = $data['attrs']['mediaPosition'] ?? 'left';
         $content = preg_replace('|<figure.*?</figure>|i', '', $content);
 
         $tags = new WP_HTML_Tag_Processor($content);
@@ -793,19 +855,33 @@ class DispatcherGutenberg {
         $tags->set_attribute('class', '');
         $content = $tags->get_updated_html();
         $alt = 'Photo';
-        $width = 300;
+        $width = 600;
         $b = '';
 
         $b .= '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">' . "\n";
         $b .= "<tr>\n";
-        $b .= "<td width='50%'>\n";
+        if ($mediaPosition === 'left') {
 
-        $b .= wp_get_attachment_image($data['attrs']['mediaId'], [$width, 0], ['alt' => $alt, 'style' => 'border: 0; display: block; font-size: 12px; max-width: 100%; height: auto;']);
+            $b .= "<td width='50%' align='left'>\n";
 
-        $b .= "</td>\n";
-        $b .= "<td width='50%'>\n";
+            $b .= wp_get_attachment_image($data['attrs']['mediaId'], [$width, 0], false, ['alt' => $alt, 'style' => 'border: 0; display: block; font-size: 12px; max-width: 100%; width: 100%; height: auto;']);
+
+            $b .= "</td>\n";
+        }
+
+        $b .= "<td width='50%' style='padding: 16px'>\n";
         $b .= $content;
         $b .= "</td>\n";
+
+        if ($mediaPosition === 'right') {
+
+            $b .= "<td width='50%' align='right'>\n";
+
+            $b .= wp_get_attachment_image($data['attrs']['mediaId'], [$width, 0], false, ['alt' => $alt, 'style' => 'border: 0; display: block; font-size: 12px; max-width: 100%; height: auto;']);
+
+            $b .= "</td>\n";
+        }
+
         $b .= "</tr>\n</table>\n";
 
         return self::render_data($data, false) . self::wrap($b, $data);
@@ -887,6 +963,10 @@ class DispatcherGutenberg {
      */
     static function render_block_data($block, $source, $parent) {
 
+        // So the rendering can be changed if a block a first level block or not
+        // (needed to add the Outlook wrapper, for example)
+        $block['parentBlock'] = $parent->name ?? '';
+
         switch ($block['blockName']) {
             case 'core/column':
                 // Calcola la larghezza che poi serve per creare il corretto HTML
@@ -930,7 +1010,8 @@ class DispatcherGutenberg {
         add_filter('render_block', [self::class, 'render_block'], 999, 2);
         add_filter('render_block_data', [self::class, 'render_block_data'], 999, 3);
 
-        $b = '<html>';
+        $b = '<!DOCTYPE html>' . "\n";
+        $b .= '<html xmlns="https://www.w3.org/1999/xhtml" xmlns:o="urn:schemas-microsoft-com:office:office">' . "\n";
 
         $b .= '<head>';
         $b .= '<style>';
@@ -945,14 +1026,13 @@ class DispatcherGutenberg {
 
         $b .= '<div style="font-size: 10px; font-family: sans-serif; display: none;">' . wp_strip_all_tags($email->post_excerpt) . '</div>';
 
-        $b .= '<table class="container" border="0" cellpadding="0" align="center" cellspacing="0" width="100%" style="width: 100%!important; max-width: ' . (self::$email_width + 50) . 'px!important">';
-        $b .= "<tr>";
-        $b .= "<td>\n\n";
-
+//        $b .= '<table class="container" border="0" cellpadding="0" align="center" cellspacing="0" width="100%" style="width: 100%!important; max-width: ' . (self::$email_width + 50) . 'px!important">';
+//        $b .= "<tr>";
+//        $b .= "<td>\n\n";
         // Probabilmente conviene estrarre i blocchi con il parse_blocks() e poi
         // processarli... vedi Fluent CRM
         $b .= do_blocks($email->post_content);
-        $b .= "</td>\n</tr>\n</table>\n";
+//        $b .= "</td>\n</tr>\n</table>\n";
 
         $b .= "</body>\n</html>";
 

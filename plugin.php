@@ -40,13 +40,13 @@ class Dispatcher {
         self::$settings = get_option(self::SLUG . '_settings', []);
 
         add_action('init', function () {
-            $show_in_rest = isset(self::$settings['gutenberg']);
-            if (is_admin() && isset($_GET['post']) && isset($_GET['action']) && $_GET['action'] === 'edit') {
-                $p = get_post($_GET['post']);
-                if (has_blocks($p)) {
-                    $show_in_rest = true;
-                }
-            }
+            $show_in_rest = true; //isset(self::$settings['gutenberg']);
+//            if (is_admin() && isset($_GET['post']) && isset($_GET['action']) && $_GET['action'] === 'edit') {
+//                $p = get_post($_GET['post']);
+//                if (has_blocks($p)) {
+//                    $show_in_rest = true;
+//                }
+//            }
 
             $public = true;
             register_post_type(self::POST_TYPE, [

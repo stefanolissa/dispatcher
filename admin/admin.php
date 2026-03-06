@@ -169,7 +169,7 @@ add_action('current_screen', function () {
                         //'spacingScale' => [],
                         'defaultSpacingSizes' => false,
                         'padding' => true,
-                        'margin' => false
+                        'margin' => true
                     ]
                 ],
             ];
