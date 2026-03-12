@@ -5,7 +5,7 @@ defined('ABSPATH') || exit;
 /*
   Plugin Name: Dispatcher
   Plugin URI: https://www.satollo.net/plugins/dispatcher
-  Description: Send emails to your audience in seconds
+  Description: Send emails to your audiences in seconds
   Version: 0.0.3
   Author: Stefano Lissa
   Author URI: https://www.satollo.net
@@ -18,15 +18,6 @@ defined('ABSPATH') || exit;
  */
 
 define('DISPATCHER_VERSION', '0.0.3');
-
-add_action('plugins_loaded', function () {
-    if (defined('SATOLLO_DISPATCHER_VERSION')) {
-        // Admin notices
-        return;
-    }
-
-    //require_once __DIR__ . '/includes/main.php';
-});
 
 class Dispatcher {
 
@@ -274,6 +265,10 @@ class Dispatcher {
         //foreach ($emails as $email) {
         self::log(__METHOD__, 'Processing ' . $email->post_title);
 
+        if (isset(self::$settings['dry_run'])) {
+            file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', 'Starting batch for email ' . $email->ID . "\n", FILE_APPEND);
+        }
+
         $count = intval(self::get_post_meta($email->ID, 'sent'));
 
         $audience_id = sanitize_key(self::get_post_meta($email->ID, 'audience_id'));
@@ -307,6 +302,9 @@ class Dispatcher {
         $contacts = $audience->get_contacts($params);
 
         if (!$contacts) {
+            if (isset(self::$settings['dry_run'])) {
+                file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', 'No more contacts' . "\n", FILE_APPEND);
+            }
             self::update_post_meta($email->ID, 'status', 'sent');
             self::log(__METHOD__, 'Completed');
             self::log(__METHOD__, 'End');
@@ -322,6 +320,10 @@ class Dispatcher {
 
         $message = self::render_message($email);
 
+        if (isset(self::$settings['dry_run'])) {
+            file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', 'Contacts: ' . count($contacts) . "\n", FILE_APPEND);
+        }
+
         foreach ($contacts as $contact) {
             self::update_post_meta($email->ID, 'last_contact_id', $contact->id);
 
@@ -334,9 +336,12 @@ class Dispatcher {
                 $to = $contact->email;
             }
 
-
-            $result = wp_mail($to, $email->post_title, $message, $headers);
-
+            if (isset(self::$settings['dry_run'])) {
+                file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', $contact->email . ' [#' . $contact->id . ']' . "\n", FILE_APPEND);
+                $result = true;
+            } else {
+                $result = wp_mail($to, $email->post_title, $message, $headers);
+            }
             $count++;
             self::update_post_meta($email->ID, 'sent', $count);
 
@@ -351,6 +356,9 @@ class Dispatcher {
             }
         }
 
+        if (isset(self::$settings['dry_run'])) {
+            file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', 'End batch' . "\n", FILE_APPEND);
+        }
         self::log(__METHOD__, 'End');
     }
 

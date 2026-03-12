@@ -5,14 +5,14 @@ global $wpdb;
 
 $subpage = $_GET['subpage'] ?? '';
 
-//switch ($subpage) {
-//    case 'logs':
-//        include __DIR__ . '/logs.php';
-//        return;
+switch ($subpage) {
+    case 'logs':
+        include __DIR__ . '/logs.php';
+        return;
 //    case 'view':
 //        include __DIR__ . '/view.php';
 //        return;
-//}
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_admin_referer('save');
@@ -32,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $settings['from_email'] = strtolower(sanitize_email($settings['from_email']));
         $settings['redirect_email'] = strtolower(sanitize_email($settings['redirect_email']));
         //$settings['test_email'] = strtolower(sanitize_email($settings['test_email'] ?? ''));
+
         update_option('dispatcher_settings', $settings, false);
     }
 
@@ -39,6 +40,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         Dispatcher::run();
     }
 }
+
+if (($_GET['action'] ?? '') === 'delete-logs') {
+        check_admin_referer('logs');
+        $secret = sanitize_key(get_option('dispatcher_secret'));
+        $file = __DIR__ . '/../' . $secret . '.txt';
+        unlink($file);
+        echo '<script>location.href="?post_type=dsp_email&page=dispatcher_settings";</script>';
+        return;
+    }
 
 $settings = get_option('dispatcher_settings', []);
 // Thank you to (some) object cache plugin ignoring the default value on missing options
@@ -63,20 +73,7 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
         display: block;
     }
 </style>
-<script>
-    var dispatcher_user_count = <?= $user_count ?>;
-    function dispatcher_update_sending_time() {
-        var speed = jQuery('#data-speed').val();
-        jQuery('#value-user-count').html(dispatcher_user_count);
-        jQuery('#value-sending-time').html((dispatcher_user_count / speed).toFixed(1));
-    }
-    jQuery(function () {
-        jQuery('#data-speed').change(() => {
-            dispatcher_update_sending_time();
-        });
-        dispatcher_update_sending_time();
-    });
-</script>
+
 <div class="wrap">
     <h2>Settings</h2>
     <p>
@@ -115,7 +112,7 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
                     </th>
                     <td>
                         <input type="text" id="data-speed" name="data[speed]" size="5" value="<?= esc_attr($settings['speed'] ?? '100'); ?>" placeholder="100"> emails per hour
-                        (<span id="value-sending-time"></span> hours to send to <span id="value-user-count"></span> users)
+
                         <p class="description">
                             Be sure to respect the hosting provider limits.
                         </p>
@@ -157,13 +154,13 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
                             </p>
                         </div>
                         <?php if (WP_DEBUG) { ?>
-                        <div id="dsp-gutenberg-debug" style="margin-top: 1rem">
-                            <input type="checkbox" name="data[gutenberg_debug]" value="1" <?= isset($settings['gutenberg_debug']) ? 'checked' : '' ?>>
-                            Add debug information on rendered emails
-                            <p class="description">
-                                Use only for development, testing, debugging!
-                            </p>
-                        </div>
+                            <div id="dsp-gutenberg-debug" style="margin-top: 1rem">
+                                <input type="checkbox" name="data[gutenberg_debug]" value="1" <?= isset($settings['gutenberg_debug']) ? 'checked' : '' ?>>
+                                Add debug information on rendered emails
+                                <p class="description">
+                                    Use only for development, testing, debugging!
+                                </p>
+                            </div>
                         <?php } ?>
                     </td>
                 </tr>
@@ -176,6 +173,20 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
                     <td>
                         <input type="email" name="data[redirect_email]" size="40" id="dsp-redirect_email" value="<?= esc_attr($settings['redirect_email'] ?? ''); ?>" placeholder="Valid email">
                         <p class="description">If set all emails are sent to this address instead of the real recipient. Use for tests.</p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>
+                        Dry run
+                    </th>
+                    <td>
+                        <input type="checkbox" name="data[dry_run]" value="1" <?= isset($settings['dry_run']) ? 'checked' : '' ?>>
+                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dsp_email&page=dispatcher_settings&subpage=logs', 'logs')) ?>" target="_blank">View log file</a>
+                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dsp_email&page=dispatcher_settings&action=delete-logs', 'logs')) ?>">Delete log file</a>
+                        <p class="description">
+                            When you send an email, no messages are sent and a log file is created so you can test the audience.
+                        </p>
                     </td>
                 </tr>
                 <!--
@@ -223,7 +234,7 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
         <p>
             <button name="save" class="button button-primary">Save</button>
             <?php if (WP_DEBUG) { ?>
-            <button name="run" class="button button-secondary">Run</button>
+                <button name="run" class="button button-secondary">Run</button>
             <?php } ?>
         </p>
 

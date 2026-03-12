@@ -18,6 +18,7 @@ class DispatcherGutenberg {
         'has-large-font-size' => 'font-size: 30px;',
         'has-medium-font-size' => 'font-size: 16px;',
         'has-small-font-size' => 'font-size: 14px;',
+
     ];
 
     static function init() {
@@ -206,6 +207,11 @@ class DispatcherGutenberg {
         return $style;
     }
 
+    static function remove_margin($style) {
+        $style = preg_replace('|margin-[^;]+;?|', '', $style);
+        return $style;
+    }
+
     /**
      * Returns the padding inline CSS style part getting the values from the
      * standard block attributes.
@@ -228,6 +234,18 @@ class DispatcherGutenberg {
             return 'margin: 0;';
         } else {
             return 'margin: ' . $margin['top'] . ' ' . $margin['right'] . ' ' . $margin['bottom'] . ' ' . $margin['left'] . ';';
+        }
+    }
+
+    static function get_border_radius_style(&$data, $def) {
+        $border_radius = $data['attrs']['style']['border']['radius'] ?? [];
+        if (empty($border_radius) && empty($def)) {
+            return 'border-radius: 0;';
+        } else {
+            return 'border-radius: ' . ($border_radius['topLeft'] ?? $def['topLeft']) . ' '
+                    . ($border_radius['topRight'] ?? $def['topRight']) . ' '
+                    . ($border_radius['bottomRight'] ?? $def['bottomRight']) . ' '
+                    . ($border_radius['bottomLeft'] ?? $def['bottomLeft']) . ';';
         }
     }
 
@@ -342,7 +360,7 @@ class DispatcherGutenberg {
     }
 
     static function end_block(&$data) {
-        $b .= "\n";
+        $b = "\n";
         if (empty($data['parentBlock'])) {
             $b .= "</td></tr></table>\n";
             $b .= "<!-- /inner wrapper -->\n\n";
@@ -434,22 +452,43 @@ class DispatcherGutenberg {
         $tags = new WP_HTML_Tag_Processor($content);
 
         $count = 0;
+
+        // With a background color, add some padding
+        if (!empty($data['attrs']['backgroundColor'])) {
+            if (empty($data['attrs']['style']['spacing']['padding'])) {
+                $data['attrs']['style']['spacing']['padding'] = ['left' => '24px', 'top' => '24px', 'bottom' => '24px', 'right' => '24px'];
+            }
+        }
+
+        if (empty($data['attrs']['style']['spacing']['margin']['bottom'])) {
+            $data['attrs']['style']['spacing']['margin']['bottom'] = '24px';
+        }
+
+        if (empty($data['attrs']['style']['typography'])) {
+            $data['attrs']['style']['typography']['fontStyle'] = 'normal';
+            $data['attrs']['style']['typography']['fontWeight'] = '400';
+        }
+
+
         // Process even inner tags (usually mark, span to change color or font to inner words)
         while ($tags->next_tag()) {
             $count++;
 
             $class = $tags->get_attribute('class');
+            if ($count == 1 && strpos($class, 'has-text-align') === false) {
+                $class .= ' has-text-align-left';
+            }
             $style = self::class_to_style($class);
 
             // Remove the default margin of Hx tags
-            if ($count == 1) {
-                $style .= 'margin: 0;';
-            }
-
             $tag_style = $tags->get_attribute('style') ?? '';
             if (!empty($tag_style)) {
                 // The padding is added to the container, Outlook does not consider it
-                $style .= self::remove_padding($tag_style);
+                $style .= self::remove_padding(self::remove_margin($tag_style)) . ';';
+            }
+
+            if ($count == 1) {
+                $style .= 'margin: 0;';
             }
 
             $tags->set_attribute('style', $style);
@@ -457,7 +496,7 @@ class DispatcherGutenberg {
 
         $content = $tags->get_updated_html();
 
-        return self::render_data($data) . self::wrap($content, $data);
+        return self::render_data($data, false) . self::wrap($content, $data);
     }
 
     static function render_spacer($content, $data) {
@@ -531,27 +570,31 @@ class DispatcherGutenberg {
     }
 
     /**
-     * Unluckily $content contains a main div with, inside, the rendered buttons.
-     * We should probably remove it to correctly create a stackabel buttons row.
+     * See even render_block_data().
      *
-     * @param type $content
-     * @param type $data
-     * @return type
+     * @param string $content
+     * @param array $data
+     * @return string
      */
     static function render_buttons($content, $data) {
-        $tags = new WP_HTML_Tag_Processor($content);
-
+        $b = '';
         $align = $data['attrs']['layout']['justifyContent'] ?? 'left';
-        //$orientation = $data['attrs']['orientation'] ?? '';
-        // Recycle the outer DIV to make the one we need.Process the outer DIV
-        while ($tags->next_tag()) {
-            $tags->set_attribute('class', '');
-            $tags->set_attribute('style', 'text-align: ' . $align . ';');
-            break;
+        $orientation = $data['attrs']['orientation'] ?? '';
+        if ($orientation === 'vertical') {
+            $b .= '<table width="100%">';
+        } else {
+            $b .= '<table width="100%" style="width: 100% !important;" class="m-responsive" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td align="' . $align . '">';
         }
-        $content = $tags->get_updated_html();
 
-        return self::render_data($data, false) . self::wrap($content, $data);
+        $b .= $content;
+
+        if ($orientation === 'vertical') {
+            $b .= '</table>';
+        } else {
+            $b .= '</td></tr></table>';
+        }
+
+        return self::render_data($data, false) . self::wrap($b, $data);
     }
 
     /**
@@ -563,7 +606,29 @@ class DispatcherGutenberg {
      * @return string
      */
     static function render_button($content, $data) {
-        //return $content;
+
+        if (empty($data['attrs']['style']['spacing']['padding'])) {
+            $data['attrs'] = array_merge_recursive($data['attrs'], [
+                'style' => [
+                    'spacing' => [
+                        'padding' => [
+                            'top' => '10px',
+                            'right' => '25px',
+                            'bottom' => '10px',
+                            'left' => '25px',
+                        ]
+                    ]
+                ]
+            ]);
+        }
+
+        $padding_style = self::get_padding_style($data);
+        $border_radius_style = self::get_border_radius_style($data, [
+            'topLeft' => '9999px',
+            'topRight' => '9999px',
+            'bottomLeft' => '9999px',
+            'bottomRight' => '9999px',
+        ]);
 
         $b = '';
 
@@ -579,7 +644,7 @@ class DispatcherGutenberg {
         $width = '';
         $align = 'center'; // Button label alignment
 
-        $border_radius = 5;
+
         $border_color = 'transparent';
 
         // Fix the missing href
@@ -594,7 +659,7 @@ class DispatcherGutenberg {
                 $style = $tags->get_attribute('style') ?? '';
             }
             if ($tags->get_tag() === 'A') {
-                $a_style = $tags->get_attribute('style') ?? '';
+                $a_style = $tags->get_attribute('style') . ';';
                 $a_class = $tags->get_attribute('class') ?? '';
                 $a_style .= self::class_to_style($a_class);
                 $href = $tags->get_attribute('href') ?: '#';
@@ -609,10 +674,10 @@ class DispatcherGutenberg {
 
         // Style of the inner A tag
         $a_style .= 'display:inline-block;'
-                . 'xcolor:' . $color . ';font-family:' . $font_family . ';'
+                . 'color:' . $color . ';font-family:' . $font_family . ';'
                 . 'xfont-size:' . $font_size . 'px;font-weight:' . $font_weight . ';'
                 . 'line-height:120%;margin:0;text-decoration:none;text-transform:none;padding:10px 25px;mso-padding-alt:0px;'
-                . 'border-radius:' . $border_radius . 'px;';
+                . $border_radius_style . $padding_style;
 
         $a_style .= $style; // Append the original style
 
@@ -623,8 +688,8 @@ class DispatcherGutenberg {
             $table_style .= 'width:' . $width . ';';
         }
 
-        $td_style = 'border-collapse:separate !important;cursor:auto;mso-padding-alt:10px 25px;background:' . $bg . ';'
-                . 'border-radius:' . $border_radius . 'px;';
+        $td_style = 'border-collapse:separate !important;cursor:auto;mso-padding-alt:10px 25px;background:' . $bg . ';';
+        $td_style .= $border_radius_style;
 
         if (!empty($border_color)) {
             $td_style .= 'border: 1px solid ' . $border_color . ';';
@@ -635,27 +700,30 @@ class DispatcherGutenberg {
         }
         // We need to deal here with the parent orintantion (horizontal or vertical)
         $orientation = $data['parentLayout']['orientation'] ?? '';
+        $justifyContent = $data['parentLayout']['justifyContent'] ?? 'left';
         if ($orientation === 'vertical') {
-            $b .= '<div style="display: block">' . "\n";
+            $b .= '<tr><td align="' . $justifyContent . '">' . "\n";
         } else {
-            $b .= '<div style="display: inline-block">' . "\n";
+            $b .= '<div style="display: inline-block;">';
         }
 
         // The actual button email-safe
         $b .= '<table border="0" cellpadding="0" cellspacing="0" role="presentation" align="center" style="' . esc_attr($table_style) . '">' . PHP_EOL
                 . "<tr>\n"
                 . "\t" . '<td align="center" bgcolor="' . $bg . '" role="presentation" style="' . esc_attr($td_style) . '" valign="middle">'
-                . "\n\t\t" . '<a href="' . esc_attr($href) . '" class="' . esc_attr($a_style) . '" style="' . esc_attr($a_style) . '" target="_blank">' . $label . '</a>' . PHP_EOL
+                . "\n\t\t" . '<a href="' . esc_attr($href) . '" style="' . esc_attr($a_style) . '" target="_blank">' . $label . '</a>' . PHP_EOL
                 . "\t</td>\n"
                 . "</tr>\n"
                 . "</table>\n";
 
         // A bit of space between the buttons
         if ($orientation === 'vertical') {
-            $b .= '<br>';
+            $b .= '</td></tr>' . "\n";
+        } else {
+            $b .= '</div>';
         }
 
-        $b .= "</div>\n";
+//        $b .= "</div>\n";
         if (self::$debug) {
             $b .= "\n<!-- /core/button -->\n\n";
         }
@@ -901,7 +969,7 @@ class DispatcherGutenberg {
 
     static function render_block($content, $data) {
 
-        error_log($data['blockName']);
+        //error_log($data['blockName']);
 
         switch ($data['blockName']) {
             case 'core/paragraph':
@@ -999,6 +1067,10 @@ class DispatcherGutenberg {
                 }
                 //print_r($block);
                 break;
+            case 'core/buttons':
+                // Removes the outer DIV
+                $block['innerContent'][0] = '';
+                $block['innerContent'][count($block['innerContent']) - 1] = '';
         }
 
 

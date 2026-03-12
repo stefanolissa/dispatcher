@@ -22,6 +22,10 @@ class DispatcherAdmin {
 
         add_action('wp_ajax_dsp_audience_settings', [self::class, 'ajax_audience_settings']);
         add_action('wp_ajax_dsp_audience_total', [self::class, 'ajax_audience_total']);
+
+        if (empty(get_option('dispatcher_secret'))) {
+            update_option('dispatcher_secret', wp_generate_password(12, false, false), false);
+        }
     }
 
     static function get_audience($id) {

@@ -36,9 +36,10 @@ add_action('manage_dsp_email_posts_custom_column', function ($column, $post_id) 
             $status = Dispatcher::get_post_meta($post_id, 'status') ?: 'draft';
             echo '<span class="dsp-status dsp-status-', esc_attr($status), '">';
             echo esc_html(ucfirst($status));
+            $total = (int) Dispatcher::get_post_meta($post_id, 'audience_total') ?: 0;
+            $sent = (int) Dispatcher::get_post_meta($post_id, 'sent') ?: 0;
             if ($status === 'sending') {
-                $total = (int) Dispatcher::get_post_meta($post_id, 'audience_total') ?: 0;
-                $sent = (int) Dispatcher::get_post_meta($post_id, 'sent') ?: 0;
+
 
                 if ($total > 0) {
                     $percent = floor($sent * 100.0 / $total);
