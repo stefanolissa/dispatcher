@@ -3,7 +3,7 @@
 defined('ABSPATH') || exit;
 
 add_filter('update_plugins_satollo-dispatcher', function ($update, $plugin_data, $plugin_file, $locales) {
-    $data = get_option('dispatcher_update_data');
+    $data = get_opion('dispatcher_update_data');
     if ($data && $data->updated < time() - WEEK_IN_SECONDS || isset($_GET['force-check'])) {
         $data = false;
     }
