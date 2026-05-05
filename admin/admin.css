@@ -2,6 +2,27 @@
 
 }
 
+/* NOTICES */
+.satollo-notice {
+    background-color: white;
+    padding: 0;
+    border: 1px solid #ddd;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.satollo-notice.satollo-notice-success {
+    border-left: 3px solid green;
+}
+
+.satollo-notice.satollo-notice-warning {
+    border-left: 3px solid orange;
+}
+
+.satollo-notice.satollo-notice-error {
+    border-left: 3px solid red;
+}
+
 #audience_total {
     cursor: pointer;
 }
@@ -20,7 +41,7 @@
     width: 5rem
 }
 
-span.dsp-status {
+span.dispatcher-status {
     background-color: #ddd;
     display: inline-block;
     padding: .2em .5em;
@@ -28,13 +49,13 @@ span.dsp-status {
     text-align: center;
     border-radius: 5em;
 }
-span.dsp-status.dsp-status-sending {
+span.dispatcher-status.dispatcher-status-sending {
     background-color: #dde;
 }
-span.dsp-status.dsp-status-sent {
+span.dispatcher-status.dispatcher-status-sent {
     background-color: #ded;
 }
-span.dsp-status.dsp-status-paused {
+span.dispatcher-status.dispatcher-status-paused {
     background-color: #ede;
 }
 

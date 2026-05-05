@@ -4,6 +4,6 @@
 
 defined('ABSPATH') || exit;
 
-function dispatcher_register_audience($audience) {
-    return Dispatcher::register_audience($audience);
+function dispatcher_register_audience_type($audience_type) {
+    return \Satollo\Dispatcher\Dispatcher::register_audience_type($audience_type);
 }

@@ -1,12 +1,14 @@
 <?php
 
+namespace Satollo\Dispatcher;
+
 defined('ABSPATH') || exit;
 
 /*
-  Plugin Name: Dispatcher
+  Plugin Name: Satollo Dispatcher
   Plugin URI: https://www.satollo.net/plugins/dispatcher
   Description: Send emails to your audiences in seconds
-  Version: 0.0.3
+  Version: 0.0.4
   Author: Stefano Lissa
   Author URI: https://www.satollo.net
   Disclaimer: Use at your own risk. No warranty expressed or implied is provided.
@@ -14,21 +16,35 @@ defined('ABSPATH') || exit;
   License: GPLv2 or later
   Requires at least: 6.9
   Requires PHP: 8.1
-  Update URI: satollo-dispatcher
  */
+
+const VERSION = '0.0.4';
+const POST_TYPE = 'dispatcher_email';
 
 define('DISPATCHER_VERSION', '0.0.3');
 
+spl_autoload_register(function ($class) {
+    static $dir = __DIR__ . '/classes/';
+    if (strncmp('Satollo\\Dispatcher', $class, 18) === 0) {
+        $class = substr($class, 18);
+        $file = $dir . str_replace('\\', '/', $class) . '.php';
+
+        if (file_exists($file)) {
+            require_once $file;
+        }
+    }
+});
+
 class Dispatcher {
 
-    const POST_TYPE = 'dsp_email';
+    const POST_TYPE = 'dispatcher_email';
     const SLUG = 'dispatcher';
 
     static $settings;
-    static $audiences = [];
+    static $audience_types = [];
 
     static function init() {
-        self::$settings = get_option(self::SLUG . '_settings', []);
+        self::$settings = get_option('dispatcher_settings', []);
 
         add_action('init', function () {
             $show_in_rest = true; //isset(self::$settings['gutenberg']);
@@ -62,8 +78,8 @@ class Dispatcher {
 
         add_filter('cron_schedules', function ($schedules) {
             $schedules['dispatcher'] = [
-                'interval' => 900,
-                'display' => 'Dispatcher (15 minutes)'
+                'interval' => WP_DEBUG ? 60 : 300,
+                'display' => 'Dispatcher'
             ];
             return $schedules;
         });
@@ -100,14 +116,19 @@ class Dispatcher {
     }
 
     static function init_audiences() {
-        if (!self::$audiences) {
+        if (!self::$audience_types) {
             do_action('dispatcher_audiences_init');
         }
     }
 
-    static function get_audience($id) {
+    static function get_audience_type($id) {
         self::init_audiences();
-        return self::$audiences[$id] ?? null;
+        return self::$audience_types[$id] ?? null;
+    }
+
+    static function get_audience_types() {
+        self::init_audiences();
+        return self::$audience_types;
     }
 
     /**
@@ -116,7 +137,8 @@ class Dispatcher {
      * @param type $audience
      * @return \WP_Error|bool
      */
-    static function register_audience($audience) {
+    static function register_audience_type($audience) {
+
         if (!method_exists($audience, 'get_id')) {
             return new WP_Error('1', 'Missing get_id method');
         }
@@ -127,7 +149,7 @@ class Dispatcher {
             return new WP_Error('2', 'Invalid ID');
         }
 
-        if (isset(self::$audiences[$id])) {
+        if (isset(self::$audience_types[$id])) {
             return new WP_Error('3', 'ID already registered');
         }
 
@@ -142,12 +164,13 @@ class Dispatcher {
 //            return new WP_Error('5', 'Missing get_total method');
 //        }
 
-        self::$audiences[$id] = $audience;
+        self::$audience_types[$id] = $audience;
 
         return true;
     }
 
-    static function get_audience_total($audience, $params) {
+    static function get_audience_total($audience) {
+        self::log(__METHOD__, $audience);
         if (is_scalar($audience)) {
             $audience = self::get_audience($audience);
             if (!$audience) {
@@ -155,19 +178,21 @@ class Dispatcher {
             }
         }
 
+        $audience_type = self::get_audience_type($audience->type);
+
         // If there is a (probably) optimized method
-        if (method_exists($audience, 'get_total')) {
-            return $audience->get_total($params);
+        if (method_exists($audience_type, 'get_total')) {
+            return $audience_type->get_total($audience);
         }
 
         $start_time = time();
         $total = 0;
-        $params->last_contact_id = 0;
-        $params->max = 1000;
+        $last_contact_id = 0;
+        $max = 1000;
 
         while (true) {
 
-            $contacts = $audience->get_contacts($params);
+            $contacts = $audience_type->get_contacts($audience, $last_contact_id, $max);
 
             $total += count($contacts);
             if (empty($contacts)) {
@@ -176,12 +201,46 @@ class Dispatcher {
             if (time() - $start_time > 5) {
                 return -1;
             }
-            $params->last_contact_id = $contacts[count($contacts) - 1]->id;
+            $last_contact_id = $contacts[count($contacts) - 1]->id;
         }
 
         gc_collect_cycles();
 
         return $total;
+    }
+
+    static function get_audience($id) {
+        global $wpdb;
+        $audience = $wpdb->get_row($wpdb->prepare("select * from {$wpdb->prefix}dispatcher_audiences where id=%d limit 1", (int) $id));
+        if ($audience) {
+            $audience->settings = unserialize($audience->settings);
+        }
+        return $audience;
+    }
+
+    /**
+     *
+     * @global \wpdb $wpdb
+     * @return array
+     */
+    static function get_audiences() {
+        global $wpdb;
+        $audiences = $wpdb->get_results("select * from {$wpdb->prefix}dispatcher_audiences order by id desc");
+        array_walk($audiences, function ($audience) {
+            $audience->settings = unserialize($audience->settings);
+        });
+        return $audiences;
+    }
+
+    static function get_email_audience($email_id) {
+        global $wpdb;
+        if (is_object($email_id)) {
+            $email_id = $email_id->ID;
+        }
+        $audience_id = self::get_post_meta($email_id, 'audience_id');
+
+        $audience = self::get_audience($audience_id);
+        return $audience;
     }
 
     /**
@@ -190,17 +249,24 @@ class Dispatcher {
      * @param object|int $email_id
      * @return \stdClass
      */
-    function get_audience_params($email_id) {
+    static function get_audience_params($email_id) {
+        global $wpdb;
         if (is_object($email_id)) {
             $email_id = $email_id->ID;
         }
 
         $last_contact_id = sanitize_key(self::get_post_meta($email_id, 'last_contact_id'));
 
-        $audience_settings = self::get_post_meta_array($email_id, 'audience_settings');
+        $audience_id = self::get_post_meta($email_id, 'audience_id');
 
-        $params = new stdClass();
-        $params->settings = $audience_settings;
+        $audience = $wpdb->get_row($wpdb->prepare("select * from {$wpdb->prefix}dispatcher_audiences where id=%d limit 1", (int) $audience_id));
+
+        if (!$audience) {
+            return null;
+        }
+
+        $params = new \stdClass();
+        $params->settings = unserialize($audience->settings);
         $params->last_contact_id = $last_contact_id;
         return $params;
     }
@@ -209,14 +275,14 @@ class Dispatcher {
         if (is_object($post_id)) {
             $post_id = $post_id->ID;
         }
-        return update_post_meta($post_id, 'dsp_' . $key, $value);
+        return update_post_meta($post_id, 'dispatcher_' . $key, $value);
     }
 
     static function get_post_meta($post_id, $key) {
         if (is_object($post_id)) {
             $post_id = $post_id->ID;
         }
-        return get_post_meta($post_id, 'dsp_' . $key, true);
+        return get_post_meta($post_id, 'dispatcher_' . $key, true);
     }
 
     static function get_post_meta_array($post_id, $key) {
@@ -227,139 +293,29 @@ class Dispatcher {
         return $value;
     }
 
+    static function set_lock() {
+        $lock = (int) get_option('dispatcher_lock', 0);
+        if ($lock && time() - $lock < HOUR_IN_SECONDS) {
+            return false;
+        }
+        update_option('dispatcher_lock', time(), false);
+        return true;
+    }
+
+    static function update_lock() {
+        update_option('dispatcher_lock', time());
+    }
+
+    static function reset_lock() {
+        update_option('dispatcher_lock', 0, false);
+    }
+
     /**
      *
      * @global wpdb $wpdb
      */
     static function run() {
-        global $wpdb;
-
-        self::log(__METHOD__, 'Start');
-
-        // Extract the emails to be sent
-        // any – retrieves any status except for ‘inherit’, ‘trash’ and ‘auto-draft’.
-        // Custom post statuses with ‘exclude_from_search’ set to true are also excluded.
-        $emails = get_posts(['post_type' => self::POST_TYPE, 'post_status' => 'any', 'posts_per_page' => 1,
-            'meta_query' => [
-                [
-                    'key' => 'dsp_status',
-                    'value' => 'sending',
-                    'compare' => '=’',
-                ]],
-            'meta_key' => 'dsp_send_time', 'orderby' => 'meta_value_num', 'order' => 'ASC']);
-
-        if (!$emails) {
-            self::log(__METHOD__, 'No emails to send');
-            self::log(__METHOD__, 'End');
-            return;
-        }
-
-        $speed = self::$settings['speed'] ?? 100;
-        self::log(__METHOD__, 'Speed ' . $speed);
-        $max = intdiv($speed, 4);
-        $delay = self::$settings['delay'] ?? 0;
-
-        // TODO: select the older or order the previous query by a meta value "dispatcher_send_time"
-        $email = $emails[0];
-
-        //foreach ($emails as $email) {
-        self::log(__METHOD__, 'Processing ' . $email->post_title);
-
-        if (isset(self::$settings['dry_run'])) {
-            file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', 'Starting batch for email ' . $email->ID . "\n", FILE_APPEND);
-        }
-
-        $count = intval(self::get_post_meta($email->ID, 'sent'));
-
-        $audience_id = sanitize_key(self::get_post_meta($email->ID, 'audience_id'));
-
-        self::init_audiences();
-
-        $audience = self::$audiences[$audience_id] ?? false;
-
-        if (!$audience) {
-            self::log(__METHOD__, 'No audience for email', $email->ID);
-            self::update_post_meta($email->ID, 'status', 'sent');
-            self::log(__METHOD__, 'Completed');
-            self::log(__METHOD__, 'End');
-            return;
-        }
-
-        $last_contact_id = sanitize_key(self::get_post_meta($email->ID, 'last_contact_id'));
-
-        $audience_settings = self::get_post_meta($email->ID, 'audience_settings');
-        if (!is_array($audience_settings)) {
-            $audience_settings = [];
-        }
-
-        $params = new stdClass();
-        $params->settings = $audience_settings;
-        $params->last_contact_id = $last_contact_id;
-        $params->max = $max;
-
-        self::log(__METHOD__, 'Audience params', $params);
-
-        $contacts = $audience->get_contacts($params);
-
-        if (!$contacts) {
-            if (isset(self::$settings['dry_run'])) {
-                file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', 'No more contacts' . "\n", FILE_APPEND);
-            }
-            self::update_post_meta($email->ID, 'status', 'sent');
-            self::log(__METHOD__, 'Completed');
-            self::log(__METHOD__, 'End');
-            return;
-        }
-
-        self::log(__METHOD__, 'Contacts', $contacts);
-
-        $headers = ['Content-Type: text/html'];
-        if (self::$settings['from_email'] ?? '') {
-            $headers[] = 'From: ' . self::$settings['from_email'];
-        }
-
-        $message = self::render_message($email);
-
-        if (isset(self::$settings['dry_run'])) {
-            file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', 'Contacts: ' . count($contacts) . "\n", FILE_APPEND);
-        }
-
-        foreach ($contacts as $contact) {
-            self::update_post_meta($email->ID, 'last_contact_id', $contact->id);
-
-            self::log(__METHOD__, 'Sending to', $contact->email);
-
-            if (self::$settings['redirect_email'] ?? '') {
-                self::log(__METHOD__, 'Redirecting to ', self::$settings['redirect_email']);
-                $to = self::$settings['redirect_email'];
-            } else {
-                $to = $contact->email;
-            }
-
-            if (isset(self::$settings['dry_run'])) {
-                file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', $contact->email . ' [#' . $contact->id . ']' . "\n", FILE_APPEND);
-                $result = true;
-            } else {
-                $result = wp_mail($to, $email->post_title, $message, $headers);
-            }
-            $count++;
-            self::update_post_meta($email->ID, 'sent', $count);
-
-            if ($result) {
-                self::log(__METHOD__, 'Sent to: ', $contact->email);
-            } else {
-                self::log(__METHOD__, 'Sending error');
-            }
-
-            if ($delay) {
-                usleep($delay * 1000);
-            }
-        }
-
-        if (isset(self::$settings['dry_run'])) {
-            file_put_contents(__DIR__ . '/' . get_option('dispatcher_secret') . '.txt', 'End batch' . "\n", FILE_APPEND);
-        }
-        self::log(__METHOD__, 'End');
+        Engine::run();
     }
 
     /**
@@ -418,10 +374,23 @@ Dispatcher::init();
 require_once __DIR__ . '/includes/php-api.php';
 require_once __DIR__ . '/includes/audiences.php';
 
+add_action('wp_abilities_api_categories_init', function () {
+    wp_register_ability_category('dispatcher', [
+        'label' => 'Dispatcher',
+        'description' => 'Abilities to administrate the Dispatcher plugin. Requires administration role.',
+    ]);
+});
+
+add_action('wp_abilities_api_init', function () {
+    require_once __DIR__ . '/includes/abilities.php';
+});
+
 if (is_admin()) {
     require_once __DIR__ . '/admin/admin.php';
 }
 
 if (is_admin() || defined('DOING_CRON') && DOING_CRON) {
-    require_once __DIR__ . '/includes/repo.php';
+    if (file_exists(__DIR__ . '/includes/repo.php')) {
+        include_once __DIR__ . '/includes/repo.php';
+    }
 }

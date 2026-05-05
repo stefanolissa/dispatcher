@@ -39,16 +39,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['run'])) {
         Dispatcher::run();
     }
+
+    if (isset($_POST['reset_lock'])) {
+        update_option('dispatcher_lock', 0, false);
+    }
 }
 
 if (($_GET['action'] ?? '') === 'delete-logs') {
-        check_admin_referer('logs');
-        $secret = sanitize_key(get_option('dispatcher_secret'));
-        $file = __DIR__ . '/../' . $secret . '.txt';
-        unlink($file);
-        echo '<script>location.href="?post_type=dsp_email&page=dispatcher_settings";</script>';
-        return;
-    }
+    check_admin_referer('logs');
+    $secret = sanitize_key(get_option('dispatcher_secret'));
+    $file = __DIR__ . '/../' . $secret . '.txt';
+    unlink($file);
+    echo '<script>location.href="?post_type=dispatcher_email&page=dispatcher";</script>';
+    return;
+}
 
 $settings = get_option('dispatcher_settings', []);
 // Thank you to (some) object cache plugin ignoring the default value on missing options
@@ -166,7 +170,7 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
                 </tr>
 
 
-                <tr>
+<!--                <tr>
                     <th>
                         Redirect all emails to
                     </th>
@@ -174,7 +178,7 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
                         <input type="email" name="data[redirect_email]" size="40" id="dsp-redirect_email" value="<?= esc_attr($settings['redirect_email'] ?? ''); ?>" placeholder="Valid email">
                         <p class="description">If set all emails are sent to this address instead of the real recipient. Use for tests.</p>
                     </td>
-                </tr>
+                </tr>-->
 
                 <tr>
                     <th>
@@ -182,12 +186,24 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
                     </th>
                     <td>
                         <input type="checkbox" name="data[dry_run]" value="1" <?= isset($settings['dry_run']) ? 'checked' : '' ?>>
-                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dsp_email&page=dispatcher_settings&subpage=logs', 'logs')) ?>" target="_blank">View log file</a>
-                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dsp_email&page=dispatcher_settings&action=delete-logs', 'logs')) ?>">Delete log file</a>
+                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dispatcher_email&page=dispatcher&subpage=logs', 'logs')) ?>" target="_blank">View log file</a>
+                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dispatcher_email&page=dispatcher&action=delete-logs', 'logs')) ?>">Delete log file</a>
                         <p class="description">
                             When you send an email, no messages are sent and a log file is created so you can test the audience.
                         </p>
                     </td>
+                </tr>
+                <tr>
+                    <th>
+                        Lock
+                    </th>
+                    <td>
+                        <?= (int) get_option('dispatcher_lock', 0); ?>
+
+                        <?= esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_option('dispatcher_lock', 0))) ?>
+                    </td>
+                </tr>
+                </td>
                 </tr>
                 <!--
                 <tr>
@@ -235,6 +251,8 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
             <button name="save" class="button button-primary">Save</button>
             <?php if (WP_DEBUG) { ?>
                 <button name="run" class="button button-secondary">Run</button>
+
+                <button class="button button-secondary" name="reset_lock"><?php esc_html_e('Reset lock', 'satollo-monitor'); ?></button>
             <?php } ?>
         </p>
 

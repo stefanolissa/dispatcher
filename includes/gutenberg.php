@@ -1,6 +1,9 @@
 <?php
+namespace Satollo\Dispatcher;
 
 defined('ABSPATH') || exit;
+
+use \WP_HTML_Tag_Processor;
 
 class DispatcherGutenberg {
 
@@ -97,7 +100,7 @@ class DispatcherGutenberg {
 
             // Apparently returns the theme configuration merged with the old "theme support" data. If a theme.json
             // is missing an empty one is created... so that should be the only function to call... bah...
-            $data = WP_Theme_JSON_Resolver::get_theme_data()->get_data();
+            $data = \WP_Theme_JSON_Resolver::get_theme_data()->get_data();
 
             // The "palette" is a list of associative arrays containing colors definitions with
             // a slug (to create the CSS classes has-xxx-color and the hex color code.

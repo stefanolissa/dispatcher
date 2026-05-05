@@ -1,11 +1,14 @@
 <?php
+
+namespace Satollo\Dispatcher;
+
 defined('ABSPATH') || exit;
 
 add_action('admin_enqueue_scripts', function ($hook_suffix) {
     wp_enqueue_style('dispatcher', plugin_dir_url(__FILE__) . '../admin.css', [], DISPATCHER_VERSION);
 });
 
-add_filter('manage_dsp_email_posts_columns', function ($columns) {
+add_filter('manage_dispatcher_email_posts_columns', function ($columns) {
     $columns['status'] = 'Status';
     $columns['send_time'] = 'Sending date';
     $columns['audience'] = 'Audience';
@@ -14,19 +17,21 @@ add_filter('manage_dsp_email_posts_columns', function ($columns) {
     return $columns;
 });
 
-add_action('manage_dsp_email_posts_custom_column', function ($column, $post_id) {
+add_action('manage_dispatcher_email_posts_custom_column', function ($column, $post_id) {
     global $wpdb;
     switch ($column) {
         case 'id' :
             echo (int) $post_id;
             break;
         case 'audience' :
-            $audience = Dispatcher::get_audience(get_post_meta($post_id, 'dsp_audience_id', true));
-            $params = dispatcher_build_audience_params($post_id);
+            $audience = Dispatcher::get_audience(Dispatcher::get_post_meta($post_id, 'audience_id'));
             if ($audience) {
-                echo esc_html($audience->get_name());
-                if (method_exists($audience, 'get_target_description')) {
-                    echo '<div style="font-size: .9em">', esc_html($audience->get_target_description($params)), '</div>';
+                $audience_type = Dispatcher::get_audience_type($audience->type);
+            }
+            if ($audience && $audience_type) {
+                echo esc_html($audience_type->get_name());
+                if (method_exists($audience_type, 'get_contacts_description')) {
+                    echo '<div style="font-size: .9em">', esc_html($audience_type->get_contacts_description($audience)), '</div>';
                 }
             } else {
                 echo 'None';
@@ -34,7 +39,7 @@ add_action('manage_dsp_email_posts_custom_column', function ($column, $post_id) 
             break;
         case 'status' :
             $status = Dispatcher::get_post_meta($post_id, 'status') ?: 'draft';
-            echo '<span class="dsp-status dsp-status-', esc_attr($status), '">';
+            echo '<span class="dispatcher-status dispatcher-status-', esc_attr($status), '">';
             echo esc_html(ucfirst($status));
             $total = (int) Dispatcher::get_post_meta($post_id, 'audience_total') ?: 0;
             $sent = (int) Dispatcher::get_post_meta($post_id, 'sent') ?: 0;
@@ -71,11 +76,11 @@ add_action('admin_notices', function () {
     $emails = get_posts(['post_type' => Dispatcher::POST_TYPE, 'post_status' => 'any', 'posts_per_page' => 1,
         'meta_query' => [
             [
-                'key' => 'dsp_status',
+                'key' => 'dispatcher_status',
                 'value' => 'sending',
                 'compare' => '=’',
             ]],
-        'meta_key' => 'dsp_send_time', 'orderby' => 'meta_value_num', 'order' => 'ASC']);
+        'meta_key' => 'dispatcher_send_time', 'orderby' => 'meta_value_num', 'order' => 'ASC']);
 
     if ($emails) {
         $next = wp_next_scheduled('dispatcher_run');

@@ -1,4 +1,7 @@
 <?php
+namespace Satollo\Dispatcher;
+
+defined('ABSPATH') || exit;
 
 /** @var WP_Post $post - Externally provided */
 $status = Dispatcher::get_post_meta($post->ID, 'status', true) ?: 'draft';
@@ -9,7 +12,7 @@ if ($total) {
     $percent = floor($sent * 100.0 / $total);
 }
 
-echo '<p style="float: left; text-align: left; font-size: 1.2em">';
+echo '<p style="font-size: 1.2em">';
 if ($status === 'sending') {
     //$next = wp_next_scheduled('dispatcher_run');
     echo '<p style="float: left; text-align: left; font-size: 1.2em">', esc_html(ucfirst($status)), ' (', $percent, '%)</p>';
@@ -19,7 +22,7 @@ if ($status === 'sending') {
 }
 echo '</p>';
 
-echo '<p style="float: right; text-align: right">';
+echo '<p>';
 
 echo '<input type="submit" name="dispatcher_test" value="Test" class="button button-secondary button-large" onclick="fn_dispatcher_action(\'test\'); return false;"> ';
 
@@ -35,7 +38,8 @@ if ($status === 'sending') {
     echo '<input type="submit" name="dispatcher_resend" value="Resend" class="button button-primary button-large" onclick="return fn_dispatcher_action(\'resend\')">';
 }
 echo '</p>';
-echo '<p style="clear: both">';
+
+echo '<p>';
 if ($status === 'sending') {
     $next = wp_next_scheduled('dispatcher_run');
     echo '<small>Next batch will be sent in ', dispatcher_format_interval($next - time()), '</small>';
@@ -48,4 +52,4 @@ if ($status === 'sending') {
 }
 echo '</p>';
 
-echo '<input type="hidden" name="dispatcher_action" id="dsp-action" value="">';
+echo '<input type="hidden" name="dispatcher_action" id="dispatcher-action" value="">';
