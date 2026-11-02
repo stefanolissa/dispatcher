@@ -38,7 +38,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $controls = new Controls($settings);
 $total = Dispatcher::get_audience_total($audience);
-
 ?>
 
 <div class="wrap">
@@ -47,7 +46,9 @@ $total = Dispatcher::get_audience_total($audience);
     <form method="post">
         <?php wp_nonce_field('dispatcher-action'); ?>
 
-        <input type="text" name="name" value="<?= esc_attr($audience->name) ?>">
+        <p>
+            <input type="text" name="name" value="<?= esc_attr($audience->name) ?>" style="width: 500px;">
+        </p>
 
         <?php
         if (method_exists($audience_type, 'settings_form')) {
@@ -55,13 +56,21 @@ $total = Dispatcher::get_audience_total($audience);
         }
         ?>
 
-        <?php //do_action('dispatcher_audience_settings_form', $audience); ?>
+        <?php //do_action('dispatcher_audience_settings_form', $audience);  ?>
 
         <p>
             <button name="save" class="button button-primary">Save</button>
         </p>
     </form>
 
+    <?php if (WP_DEBUG) { ?>
+
+        <h3>Debug</h3>
+        <p>
+            That helps me when supporting you...
+        </p>
+        <pre><?php echo esc_html(print_r($audience, true)); ?></pre>
+    <?php } ?>
 
 </div>
 

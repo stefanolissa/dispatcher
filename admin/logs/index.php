@@ -121,10 +121,10 @@ class List_Table extends \WP_List_Table {
         ]);
 
         if ($this->type) {
-            $this->items = $wpdb->get_results($wpdb->prepare("select * from {$wpdb->prefix}dispatcher_logs where type=%s order by id desc limit %d offset %d",
+            $this->items = $wpdb->get_results($wpdb->prepare("select * from {$wpdb->prefix}dispatcher_logs where type=%s order by id asc limit %d offset %d",
                             $this->type, $per_page, ($current_page - 1) * $per_page));
         } else {
-            $this->items = $wpdb->get_results($wpdb->prepare("select * from {$wpdb->prefix}dispatcher_logs order by id desc limit %d offset %d",
+            $this->items = $wpdb->get_results($wpdb->prepare("select * from {$wpdb->prefix}dispatcher_logs order by id asc limit %d offset %d",
                             $per_page, ($current_page - 1) * $per_page));
         }
     }
@@ -134,7 +134,7 @@ $table = new List_Table($type);
 $table->process_bulk_action();
 $table->prepare_items();
 
-$log_types = ['engine' => 'Engine'];
+$log_types = ['engine' => 'Engine', 'audience' => 'Audience', 'admin' => 'Admin'];
 ?>
 <style>
     .column-id {

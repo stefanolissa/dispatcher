@@ -20,6 +20,10 @@ class AudienceType {
 
     }
 
+//    public function get_settings_schema(): array {
+//
+//    }
+
     public function get_contacts($audience): array {
 
     }

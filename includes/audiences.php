@@ -4,80 +4,17 @@ namespace Satollo\Dispatcher;
 
 defined('ABSPATH') || exit;
 
-/**
- * Only for code completion. Do not use.
- */
-class DispatcherAudienceParams {
-
-    var $last_contact_id;
-    var $max;
-
-    /** @var array */
-    var $settings;
-}
-
-/**
- * Only for code completion. Do not use.
- */
-class DispatcherContact {
-
-    var $id;
-    var $email;
-}
-
-class DispatcherAudienceAll {
+class WPUsersAudience {
 
     function get_id() {
-        return 'dsp-all';
+        return 'dsp-wp-users';
     }
 
     function get_name() {
-        return 'All WP users';
-    }
-
-    function get_contacts($params) {
-        global $wpdb;
-        $contacts = [];
-        $users = $wpdb->get_results($wpdb->prepare("select ID, user_email from {$wpdb->users} where id > %d order by id limit %d", $params->last_contact_id, $params->max));
-        foreach ($users as $user) {
-            $contact = new \stdClass();
-            $contact->id = $user->ID;
-            $contact->email = $user->user_email;
-            $contacts[] = $contact;
-        }
-        return $contacts;
-    }
-
-    function get_total($params) {
-        global $wpdb;
-        return $wpdb->get_var("select count(*) from {$wpdb->users}");
+        return 'WP Users';
     }
 
     /**
-     * @param DispatcherAudienceParams $params
-     */
-    function form($params) {
-        echo 'No settings needed';
-    }
-
-    function settings_form($controls) {
-        echo 'No settings needed';
-    }
-}
-
-class DispatcherAudienceRoles {
-
-    function get_id() {
-        return 'dsp-roles';
-    }
-
-    function get_name() {
-        return 'WP users by roles';
-    }
-
-    /**
-     *
-     * @param DispatcherAudienceParams $params
      * @return string
      */
     function get_contacts_description($audience = null) {
@@ -90,8 +27,7 @@ class DispatcherAudienceRoles {
     /**
      *
      * @global wpdb $wpdb
-     * @param DispatcherAudienceParams $params
-     * @return DispatcherContact[]
+     * @return Contact[]
      */
     function get_contacts($audience, $last_contact_id, $max) {
         global $wpdb;
@@ -101,8 +37,12 @@ class DispatcherAudienceRoles {
         $roles = $audience->settings['roles'] ?? [];
         $contacts = [];
         $contact_id = $last_contact_id;
+        $date_start = empty($audience->settings['date_start']) ? false : new \DateTime($audience->settings['date_start']);
+        $date_end = empty($audience->settings['date_end']) ? false : new \DateTime($audience->settings['date_end']);
+        error_log(print_r($date_start, true));
         while (count($contacts) < $max) {
             $db_users = $wpdb->get_results($wpdb->prepare("select ID from {$wpdb->users} where id > %d order by id limit %d", $contact_id, $max));
+            error_log(count($db_users));
             if (empty($db_users)) {
                 break;
             }
@@ -115,12 +55,25 @@ class DispatcherAudienceRoles {
 
                 $user = new \WP_User($db_user->ID);
                 //Logger::log('audience', Logger::DEBUG, $db_user->ID, $user->roles);
-                if (empty(array_intersect($user->roles, $roles))) {
+                if (!empty($roles) && empty(array_intersect($user->roles, $roles))) {
                     continue;
                 }
+
+                $registered = new \DateTime($user->user_registered);
+                error_log(print_r($registered, true));
+
+                if ($date_start && $registered < $date_start) {
+                    continue;
+                }
+
+                if ($date_end && $registered > $date_end) {
+                    continue;
+                }
+
                 $contact = new \stdClass();
                 $contact->id = $user->ID;
                 $contact->email = $user->user_email;
+                $contact->created = $registered;
                 $contacts[] = $contact;
             }
         }
@@ -128,21 +81,31 @@ class DispatcherAudienceRoles {
         return $contacts;
     }
 
-    function get_settings_schema() {
-
+    function get_settings_schema(): array {
+        return [];
     }
 
     function settings_form($controls) {
+        echo '<p>Empty fields are not used to filter users</p>';
+        echo '<table class="form-table">';
+
+        echo '<tr><th>Registered</th><td>';
+        echo '<input type="date" name="settings[date_start]" value="', esc_attr($controls->settings['date_start'] ?? ''), '">';
+        echo ' - ';
+        echo '<input type="date" name="settings[date_end]" value="', esc_attr($controls->settings['date_end'] ?? ''), '">';
+        echo '</td></tr>';
+        echo '<tr><th>Roles</th><td>';
         $roles = $controls->settings['roles'] ?? [];
         foreach (wp_roles()->roles as $key => $wp_role) {
             echo '<label><input type="checkbox" name="settings[roles][]" value="', esc_attr($key), '" ',
             in_array($key, $roles) ? 'checked' : '',
             '> ', esc_html($wp_role['name']), '</label><br>';
         }
+        echo '</td></tr>';
+        echo '</table>';
     }
 }
 
 add_action('dispatcher_audiences_init', function () {
-    dispatcher_register_audience_type(new DispatcherAudienceAll());
-    dispatcher_register_audience_type(new DispatcherAudienceRoles());
+    dispatcher_register_audience_type(new WPUsersAudience());
 });

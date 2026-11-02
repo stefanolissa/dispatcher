@@ -15,7 +15,7 @@ switch ($subpage) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    check_admin_referer('save');
+    check_admin_referer('dispatcher-action');
 
     if (isset($_POST['save'])) {
         // TODO: Add kses, unslash, ...
@@ -39,19 +39,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['run'])) {
         Dispatcher::run();
     }
-
-    if (isset($_POST['reset_lock'])) {
-        update_option('dispatcher_lock', 0, false);
-    }
 }
 
-if (($_GET['action'] ?? '') === 'delete-logs') {
-    check_admin_referer('logs');
-    $secret = sanitize_key(get_option('dispatcher_secret'));
-    $file = __DIR__ . '/../' . $secret . '.txt';
-    unlink($file);
-    echo '<script>location.href="?post_type=dispatcher_email&page=dispatcher";</script>';
-    return;
+$action = $_GET['action'] ?? '';
+
+if ($action) {
+    check_admin_referer('dispatcher-action');
+
+    if ($action === 'delete-logs') {
+        $secret = sanitize_key(get_option('dispatcher_secret'));
+        $file = __DIR__ . '/../' . $secret . '.txt';
+        unlink($file);
+        echo '<script>location.href="?post_type=dispatcher_email&page=dispatcher";</script>';
+        return;
+    }
+
+    if ($action === 'reset-lock') {
+        update_option('dispatcher_lock', 0, false);
+    }
 }
 
 $settings = get_option('dispatcher_settings', []);
@@ -94,7 +99,7 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
 
     <form method="post">
 
-        <?php wp_nonce_field('save'); ?>
+        <?php wp_nonce_field('dispatcher-action'); ?>
 
         <table class="form-table">
 
@@ -139,18 +144,19 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
 
                 <tr>
                     <th>
-                        Use Gutenberg as editor
+                        Gutenberg
                     </th>
                     <td>
-                        <input type="checkbox" name="data[gutenberg]" id="dsp-gutenberg" value="1" <?= isset($settings['gutenberg']) ? 'checked' : '' ?>>
-                        <p class="description" id="dsp-gutenberg-description">
-                            To use both Gutenberg and the old editor, install the
-                            <a href="https://wordpress.org/plugins/classic-editor/" target="_blank">Classic Editor</a> plugin.
-                            <br>
-                            Warning: Gutenberg produce modern HTML not compatibile with many email readers and required a lot of styles
-                            that cannot be included into emails. But if you stick on paragraph and titles it may work.
-                        </p>
-                        <div id="dsp-gutenberg-all-blocks" style="margin-top: 1rem">
+                        <!--
+                                                <p class="description" id="dsp-gutenberg-description">
+                                                    To use both Gutenberg and the old editor, install the
+                                                    <a href="https://wordpress.org/plugins/classic-editor/" target="_blank">Classic Editor</a> plugin.
+                                                    <br>
+                                                    Warning: Gutenberg produce modern HTML not compatibile with many email readers and required a lot of styles
+                                                    that cannot be included into emails. But if you stick on paragraph and titles it may work.
+                                                </p>
+                        -->
+                        <div style="margin-bottom: 1rem">
                             <input type="checkbox" name="data[gutenberg_all_blocks]" value="1" <?= isset($settings['gutenberg_all_blocks']) ? 'checked' : '' ?>>
                             Show unsupported Gutenberg blocks
                             <p class="description">
@@ -158,7 +164,7 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
                             </p>
                         </div>
                         <?php if (WP_DEBUG) { ?>
-                            <div id="dsp-gutenberg-debug" style="margin-top: 1rem">
+                            <div style="margin-bottom: 1rem">
                                 <input type="checkbox" name="data[gutenberg_debug]" value="1" <?= isset($settings['gutenberg_debug']) ? 'checked' : '' ?>>
                                 Add debug information on rendered emails
                                 <p class="description">
@@ -186,10 +192,20 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
                     </th>
                     <td>
                         <input type="checkbox" name="data[dry_run]" value="1" <?= isset($settings['dry_run']) ? 'checked' : '' ?>>
-                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dispatcher_email&page=dispatcher&subpage=logs', 'logs')) ?>" target="_blank">View log file</a>
-                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dispatcher_email&page=dispatcher&action=delete-logs', 'logs')) ?>">Delete log file</a>
+                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dispatcher_email&page=dispatcher-logs', 'dispatcher-action')) ?>" target="_blank">View log file</a>
                         <p class="description">
                             When you send an email, no messages are sent and a log file is created so you can test the audience.
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th>
+                        Debug
+                    </th>
+                    <td>
+                        <input type="checkbox" name="data[debug]" value="1" <?= isset($settings['debug']) ? 'checked' : '' ?>>
+                        <p class="description">
+                            Detailed information are recorded on the logs and possibly on the server "error_log".
                         </p>
                     </td>
                 </tr>
@@ -201,6 +217,8 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
                         <?= (int) get_option('dispatcher_lock', 0); ?>
 
                         <?= esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), get_option('dispatcher_lock', 0))) ?>
+                        <a href="<?php echo esc_attr(wp_nonce_url('?post_type=dispatcher_email&page=dispatcher-settings&action=reset-lock', 'dispatcher-action')) ?>" onclick="return confirm('Proceed?')">Reset lock</a>
+
                     </td>
                 </tr>
                 </td>
@@ -252,7 +270,6 @@ $user_count = $wpdb->get_var("select count(*) from {$wpdb->users}");
             <?php if (WP_DEBUG) { ?>
                 <button name="run" class="button button-secondary">Run</button>
 
-                <button class="button button-secondary" name="reset_lock"><?php esc_html_e('Reset lock', 'satollo-monitor'); ?></button>
             <?php } ?>
         </p>
 

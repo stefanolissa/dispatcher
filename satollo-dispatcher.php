@@ -8,20 +8,20 @@ defined('ABSPATH') || exit;
   Plugin Name: Satollo Dispatcher
   Plugin URI: https://www.satollo.net/plugins/dispatcher
   Description: Send emails to your audiences in seconds
-  Version: 0.0.4
+  Version: 1.0.0
   Author: Stefano Lissa
   Author URI: https://www.satollo.net
   Disclaimer: Use at your own risk. No warranty expressed or implied is provided.
-  Text Domain: dispatcher
+  Text Domain: satollo-dispatcher
   License: GPLv2 or later
   Requires at least: 6.9
   Requires PHP: 8.1
  */
 
-const VERSION = '0.0.4';
+const VERSION = '1.0.0';
 const POST_TYPE = 'dispatcher_email';
 
-define('DISPATCHER_VERSION', '0.0.3');
+define('DISPATCHER_VERSION', '1.0.0');
 
 spl_autoload_register(function ($class) {
     static $dir = __DIR__ . '/classes/';
@@ -291,23 +291,6 @@ class Dispatcher {
             $value = [];
         }
         return $value;
-    }
-
-    static function set_lock() {
-        $lock = (int) get_option('dispatcher_lock', 0);
-        if ($lock && time() - $lock < HOUR_IN_SECONDS) {
-            return false;
-        }
-        update_option('dispatcher_lock', time(), false);
-        return true;
-    }
-
-    static function update_lock() {
-        update_option('dispatcher_lock', time());
-    }
-
-    static function reset_lock() {
-        update_option('dispatcher_lock', 0, false);
     }
 
     /**
